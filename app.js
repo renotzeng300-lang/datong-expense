@@ -6,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
-  onSnapshot, getDoc, serverTimestamp, query, orderBy, writeBatch
+  onSnapshot, getDoc, serverTimestamp, query, orderBy, writeBatch, arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const app = initializeApp(firebaseConfig);
@@ -374,27 +374,41 @@ function approveButtons(r){
   if(!canApprove) return '';
   return `<button class="btn btn-ghost btn-sm" onclick="setStatus('${r.id}','已核可')">核可</button>
           <button class="btn btn-amber btn-sm" onclick="setStatus('${r.id}','已退件')">退件</button>
-          <button class="btn btn-ghost btn-sm" onclick="editDirectorNote('${r.id}')">${r.directorNote ? '編輯備註' : '＋審核備註'}</button>`;
+          <button class="btn btn-ghost btn-sm" onclick="addDirectorNote('${r.id}')">＋審核備註</button>`;
+}
+function fmtNoteTime(ts){
+  if(!ts) return '';
+  const d = new Date(ts);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 function directorNoteDisplay(r){
-  if(!r.directorNote) return '';
-  const roleLabel = ROLE_LABEL[r.directorNoteRole] || '';
-  const who = r.directorNoteBy ? `${roleLabel}${r.directorNoteBy}` : roleLabel;
-  return `<div class="director-note">📝 <b>審核備註${who?`（${escapeHtml(who)}）`:''}：</b>${escapeHtml(r.directorNote)}</div>`;
+  let notes = Array.isArray(r.directorNotes) ? r.directorNotes.slice() : [];
+  // 相容舊版單筆備註資料（升級前寫入的紀錄）
+  if(r.directorNote && !notes.some(n=>n.text===r.directorNote)){
+    notes.push({ by: r.directorNoteBy, role: r.directorNoteRole, text: r.directorNote, at: null });
+  }
+  if(!notes.length) return '';
+  notes.sort((a,b)=>(a.at||0)-(b.at||0));
+  return notes.map(n=>{
+    const roleLabel = ROLE_LABEL[n.role] || '';
+    const who = n.by ? `${roleLabel}${roleLabel?' ':''}${n.by}` : roleLabel;
+    const timeTxt = fmtNoteTime(n.at);
+    return `<div class="director-note">📝 <b>審核備註${who?`（${escapeHtml(who)}）`:''}</b>${timeTxt?` <span style="opacity:.75;">· ${timeTxt}</span>`:''}<br>${escapeHtml(n.text)}</div>`;
+  }).join('');
 }
-window.editDirectorNote = async function(id){
+window.addDirectorNote = async function(id){
   const rec = expenses.find(x=>x.id===id);
   if(!rec) return;
-  const note = prompt("請輸入審核備註（理事長/主任填寫，登打者也會看到）：", rec.directorNote || "");
-  if(note === null) return; // 取消
+  const note = prompt("請輸入審核備註（會新增一筆，不會覆蓋之前的留言）：", "");
+  if(note === null || !note.trim()) return; // 取消或空白不送出
   try{
     await updateDoc(doc(db,'expenses', id), {
-      directorNote: note.trim(),
-      directorNoteBy: currentUser.name,
-      directorNoteRole: currentUser.role,
+      directorNotes: arrayUnion({
+        by: currentUser.name, role: currentUser.role, text: note.trim(), at: Date.now()
+      }),
       statusBy: currentUser.name, statusAt: serverTimestamp()
     });
-    showToast("已儲存審核備註");
+    showToast("已新增審核備註");
   }catch(err){
     showToast("⚠ 儲存失敗：" + err.message);
   }
