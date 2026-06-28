@@ -29,6 +29,7 @@ let currentUser = null; // { uid, email, name, role }
 let editingId = null;
 let lastRecorderName = '';
 let showAllRecent = false;
+let trendDrillSnapshot = null;
 let catChart = null, trendChart = null;
 let unsubExpenses = null, unsubUsers = null;
 
@@ -377,7 +378,7 @@ function approveButtons(r){
 }
 function directorNoteDisplay(r){
   if(!r.directorNote) return '';
-  return `<div class="note" style="margin-top:4px;">📝 ${escapeHtml(r.directorNote)}</div>`;
+  return `<div class="director-note">📝 <b>審核備註：</b>${escapeHtml(r.directorNote)}</div>`;
 }
 window.editDirectorNote = async function(id){
   const rec = expenses.find(x=>x.id===id);
@@ -465,12 +466,26 @@ document.querySelectorAll('#quickRange button').forEach(btn=>{
     document.querySelectorAll('#quickRange button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     setQuickRange(btn.dataset.range);
+    trendDrillSnapshot = null;
+    $('trendBackBtn').classList.add('hidden');
     runAnalysis();
   });
 });
 $('applyFilterBtn').addEventListener('click', ()=>{
   document.querySelectorAll('#quickRange button').forEach(b=>b.classList.remove('active'));
+  trendDrillSnapshot = null;
+  $('trendBackBtn').classList.add('hidden');
   runAnalysis();
+});
+$('trendBackBtn').addEventListener('click', ()=>{
+  if(trendDrillSnapshot){
+    $('r_start').value = trendDrillSnapshot.start;
+    $('r_end').value = trendDrillSnapshot.end;
+  }
+  trendDrillSnapshot = null;
+  $('trendBackBtn').classList.add('hidden');
+  runAnalysis();
+  showToast("已返回上一個篩選範圍");
 });
 
 function getFiltered(){
@@ -580,10 +595,12 @@ function runAnalysis(){
           if(!elements.length) return;
           const b = trendBuckets[elements[0].index];
           if(!b) return;
+          trendDrillSnapshot = { start: $('r_start').value, end: $('r_end').value };
           $('r_start').value = b.start;
           $('r_end').value = b.end;
           document.querySelectorAll('#quickRange button').forEach(btn=>btn.classList.remove('active'));
           runAnalysis();
+          $('trendBackBtn').classList.remove('hidden');
           showToast(`已篩選區間：${b.label}（${b.start}~${b.end}）`);
           $('catChart').closest('.card')?.scrollIntoView({behavior:'smooth', block:'start'});
         }
