@@ -125,7 +125,9 @@ function applyRoleUI(){
   badge.className = 'role-badge role-' + (currentUser.role === 'admin' ? 'admin' : currentUser.role === 'director' ? 'director' : 'staff');
 
   lastRecorderName = currentUser.name;
-  $('f_recorder').value = lastRecorderName; = currentUser.role === 'admin';
+  $('f_recorder').value = lastRecorderName;
+
+  const isAdmin = currentUser.role === 'admin';
   const isStaffOrAdmin = isAdmin || currentUser.role === 'staff';
   const isDirector = currentUser.role === 'director';
 
