@@ -378,7 +378,9 @@ function approveButtons(r){
 }
 function directorNoteDisplay(r){
   if(!r.directorNote) return '';
-  return `<div class="director-note">📝 <b>審核備註：</b>${escapeHtml(r.directorNote)}</div>`;
+  const roleLabel = ROLE_LABEL[r.directorNoteRole] || '';
+  const who = r.directorNoteBy ? `${roleLabel}${r.directorNoteBy}` : roleLabel;
+  return `<div class="director-note">📝 <b>審核備註${who?`（${escapeHtml(who)}）`:''}：</b>${escapeHtml(r.directorNote)}</div>`;
 }
 window.editDirectorNote = async function(id){
   const rec = expenses.find(x=>x.id===id);
@@ -387,7 +389,10 @@ window.editDirectorNote = async function(id){
   if(note === null) return; // 取消
   try{
     await updateDoc(doc(db,'expenses', id), {
-      directorNote: note.trim(), statusBy: currentUser.name, statusAt: serverTimestamp()
+      directorNote: note.trim(),
+      directorNoteBy: currentUser.name,
+      directorNoteRole: currentUser.role,
+      statusBy: currentUser.name, statusAt: serverTimestamp()
     });
     showToast("已儲存審核備註");
   }catch(err){

@@ -42,7 +42,7 @@ service cloud.firestore {
       allow update: if isStaffOrAdmin() ||
         (isDirector() &&
          request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['status', 'statusBy', 'statusAt', 'directorNote']));
+           .hasOnly(['status', 'statusBy', 'statusAt', 'directorNote', 'directorNoteBy', 'directorNoteRole']));
     }
   }
 }
