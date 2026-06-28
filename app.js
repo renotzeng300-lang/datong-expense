@@ -372,8 +372,10 @@ function statusBadge(status){
 function approveButtons(r){
   const canApprove = currentUser.role === 'director' || currentUser.role === 'admin';
   if(!canApprove) return '';
-  return `<button class="btn btn-ghost btn-sm" onclick="setStatus('${r.id}','已核可')">核可</button>
-          <button class="btn btn-amber btn-sm" onclick="setStatus('${r.id}','已退件')">退件</button>
+  return `<div class="action-row">
+            <button class="btn btn-ghost btn-sm" onclick="setStatus('${r.id}','已核可')">核可</button>
+            <button class="btn btn-amber btn-sm" onclick="setStatus('${r.id}','已退件')">退件</button>
+          </div>
           <button class="btn btn-ghost btn-sm" onclick="addDirectorNote('${r.id}')">＋審核備註</button>`;
 }
 function fmtNoteTime(ts){
@@ -416,8 +418,10 @@ window.addDirectorNote = async function(id){
 function editButtons(r){
   const canEdit = currentUser.role === 'staff' || currentUser.role === 'admin';
   if(!canEdit) return '';
-  return `<button class="btn btn-ghost btn-sm" onclick="startEdit('${r.id}')">編輯</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteEntry('${r.id}')">刪除</button>`;
+  return `<div class="action-row">
+            <button class="btn btn-ghost btn-sm" onclick="startEdit('${r.id}')">編輯</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteEntry('${r.id}')">刪除</button>
+          </div>`;
 }
 
 /* ---------------- 近期紀錄表 (Tab1) ---------------- */
