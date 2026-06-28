@@ -396,10 +396,15 @@ function editButtons(r){
 
 /* ---------------- 近期紀錄表 (Tab1) ---------------- */
 function renderRecent(){
-  const sorted = expenses.slice().sort((a,b)=> b.date.localeCompare(a.date));
+  const start = $('rec_start').value;
+  const end = $('rec_end').value;
+  let filtered = expenses.slice();
+  if(start) filtered = filtered.filter(r=>r.date >= start);
+  if(end) filtered = filtered.filter(r=>r.date <= end);
+  const sorted = filtered.sort((a,b)=> b.date.localeCompare(a.date));
   const recent = showAllRecent ? sorted : sorted.slice(0,15);
-  $('recentCount').textContent = expenses.length + " 筆（共）";
-  $('toggleRecentBtn').textContent = showAllRecent ? `只看最新 15 筆` : `顯示全部紀錄（共 ${expenses.length} 筆）`;
+  $('recentCount').textContent = (start||end) ? `${sorted.length} 筆（篩選結果，共 ${expenses.length} 筆）` : `${expenses.length} 筆（共）`;
+  $('toggleRecentBtn').textContent = showAllRecent ? `只看最新 15 筆` : `顯示全部（共 ${sorted.length} 筆）`;
   $('recentEmpty').style.display = recent.length ? 'none':'block';
   $('recentBody').innerHTML = recent.map(r=>`
     <tr>
@@ -416,6 +421,12 @@ function renderRecent(){
 
 $('toggleRecentBtn').addEventListener('click', ()=>{
   showAllRecent = !showAllRecent;
+  renderRecent();
+});
+$('recFilterBtn').addEventListener('click', ()=>{ showAllRecent = true; renderRecent(); });
+$('recClearBtn').addEventListener('click', ()=>{
+  $('rec_start').value = ''; $('rec_end').value = '';
+  showAllRecent = false;
   renderRecent();
 });
 
@@ -517,13 +528,16 @@ function runAnalysis(){
     </tr>`).join("") : `<tr><td colspan="4" class="empty">無資料</td></tr>`;
 
   if(catChart) catChart.destroy();
-  catChart = new Chart($('catChart'), {
-    type: 'bar',
-    data: { labels: catEntries.map(e=>e[0]), datasets: [{ label:'支出金額', data: catEntries.map(e=>e[1].amount), backgroundColor: catEntries.map((_,i)=>CHART_COLORS[i%CHART_COLORS.length]), borderRadius:4 }] },
-    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>fmtMoney(ctx.raw)}} },
-      scales:{ x:{ ticks:{ callback:v=>'$'+v.toLocaleString() } } } }
-  });
+  try{
+    catChart = new Chart($('catChart'), {
+      type: 'doughnut',
+      data: { labels: catEntries.map(e=>e[0]), datasets: [{ data: catEntries.map(e=>e[1].amount), backgroundColor: catEntries.map((_,i)=>CHART_COLORS[i%CHART_COLORS.length]), borderWidth:2, borderColor:'#fff' }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'right', labels:{ boxWidth:12, font:{size:11} } }, tooltip:{callbacks:{label:ctx=>ctx.label+'：'+fmtMoney(ctx.raw)+'（'+(total?(ctx.raw/total*100).toFixed(1):'0.0')+'%）'}} } }
+    });
+  }catch(err){
+    $('catChart').closest('.chart-box').innerHTML = '<p class="empty">圖表載入失敗，但下方表格資料完整無誤。</p>';
+  }
 
   let groupFn, unitLabel;
   if(days <= 16){ groupFn = r=>r.date; unitLabel = "依日"; }
@@ -536,13 +550,17 @@ function runAnalysis(){
   const trendKeys = Object.keys(trendMap).sort((a,b)=> rows.findIndex(r=>groupFn(r)===a) - rows.findIndex(r=>groupFn(r)===b));
 
   if(trendChart) trendChart.destroy();
-  trendChart = new Chart($('trendChart'), {
-    type:'bar',
-    data:{ labels: trendKeys, datasets:[{ label:'支出金額', data: trendKeys.map(k=>trendMap[k]), backgroundColor:'#2c6e64', borderRadius:4 }] },
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>fmtMoney(ctx.raw)}} },
-      scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } } } }
-  });
+  try{
+    trendChart = new Chart($('trendChart'), {
+      type:'bar',
+      data:{ labels: trendKeys, datasets:[{ label:'支出金額', data: trendKeys.map(k=>trendMap[k]), backgroundColor:'#2c6e64', borderRadius:4 }] },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>fmtMoney(ctx.raw)}} },
+        scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } } } }
+    });
+  }catch(err){
+    $('trendChart').closest('.chart-box').innerHTML = '<p class="empty">圖表載入失敗，請稍後重新整理頁面再試。</p>';
+  }
 
   $('detailCount').textContent = count + " 筆";
   $('detailEmpty').style.display = count ? 'none':'block';
@@ -679,22 +697,26 @@ $('runCompareBtn').addEventListener('click', ()=>{
     `<tr><td><b>合計</b></td>${ranges.map((_,i)=>`<td class="amt"><b>${fmtMoney(table.reduce((s,row)=>s+row.cells[i],0))}</b></td>`).join("")}<td class="amt"><b>${fmtMoney(table.reduce((s,row)=>s+row.total,0))}</b></td></tr>`;
 
   if(compareChart) compareChart.destroy();
-  compareChart = new Chart($('compareChart'), {
-    type:'bar',
-    data:{
-      labels: cats,
-      datasets: ranges.map((r,i)=>({
-        label: r.label,
-        data: table.map(row=>row.cells[i]),
-        backgroundColor: CHART_COLORS[i%CHART_COLORS.length],
-        borderRadius:4
-      }))
-    },
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ tooltip:{callbacks:{label:ctx=>ctx.dataset.label+'：'+fmtMoney(ctx.raw)}} },
-      scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } } } }
-  });
   $('compareResultWrap').classList.remove('hidden');
+  try{
+    compareChart = new Chart($('compareChart'), {
+      type:'bar',
+      data:{
+        labels: cats,
+        datasets: ranges.map((r,i)=>({
+          label: r.label,
+          data: table.map(row=>row.cells[i]),
+          backgroundColor: CHART_COLORS[i%CHART_COLORS.length],
+          borderRadius:4
+        }))
+      },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ tooltip:{callbacks:{label:ctx=>ctx.dataset.label+'：'+fmtMoney(ctx.raw)}} },
+        scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } } } }
+    });
+  }catch(err){
+    $('compareChart').closest('.chart-box').innerHTML = '<p class="empty">圖表載入失敗，但下方比較表格資料完整無誤。</p>';
+  }
   showToast("已產生跨期比較");
 });
 

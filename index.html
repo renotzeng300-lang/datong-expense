@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>大同發展中心 經費支出管理平台</title>
-<link rel="icon" href="logo.webp" type="image/webp">
+<link rel="icon" href="logo.png" type="image/png">
 <link rel="stylesheet" href="styles.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -41,7 +41,7 @@
 
   <header class="top">
     <div class="titles" style="display:flex;align-items:center;gap:12px;">
-      <img src="logo.webp" alt="大同發展中心 LOGO" style="height:52px;width:52px;object-fit:contain;">
+      <img src="logo.png" alt="大同發展中心 LOGO" style="height:52px;width:52px;object-fit:contain;">
       <div>
         <h1>大同發展中心　經費支出管理平台</h1>
         <p>中華民國腦性麻痺協會　臺北市大同發展中心｜每日登打・即時同步・區間統計</p>
@@ -120,7 +120,13 @@
 
     <div class="card">
       <h2>近期登打紀錄 <span class="tag" id="recentCount">0 筆</span></h2>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:8px;">
+        <div class="field" style="margin-bottom:0;"><label>起始日期</label><input type="date" id="rec_start"></div>
+        <div class="field" style="margin-bottom:0;"><label>結束日期</label><input type="date" id="rec_end"></div>
+      </div>
       <div class="btn-row" style="margin-top:0;">
+        <button type="button" class="btn btn-primary btn-sm" id="recFilterBtn">套用日期篩選</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="recClearBtn">清除篩選</button>
         <button type="button" class="btn btn-ghost btn-sm" id="toggleRecentBtn">顯示全部紀錄</button>
       </div>
       <div class="table-scroll">
