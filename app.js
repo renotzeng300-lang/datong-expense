@@ -36,7 +36,13 @@ const ROLE_LABEL = { staff:"登打者", director:"理事長", admin:"主任", pe
 const CHART_COLORS = ["#2c6e64","#c98a2c","#6a8caf","#b14e4e","#7a9b5c","#a17fb5","#cf9b5c","#4a8b8b","#8d6a4f","#5c7fa8","#a85c7f","#7f8d4f","#967fa8"];
 
 /* ---------------- 工具 ---------------- */
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+function fmtLocalDate(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function todayISO(){ return fmtLocalDate(new Date()); }
 function rocFromISO(iso){
   if(!iso) return "";
   const [y,m,d] = iso.split("-").map(Number);
@@ -434,7 +440,7 @@ $('recClearBtn').addEventListener('click', ()=>{
 function setQuickRange(kind){
   const today = new Date();
   let start, end;
-  const fmt = d => d.toISOString().slice(0,10);
+  const fmt = d => fmtLocalDate(d);
   if(kind === 'thisWeek'){
     const day = (today.getDay()+6)%7;
     start = new Date(today); start.setDate(today.getDate()-day);
@@ -483,15 +489,23 @@ function getFiltered(){
   }).sort((a,b)=> a.date.localeCompare(b.date));
 }
 function dayDiff(a,b){ return Math.round((new Date(b) - new Date(a)) / 86400000) + 1; }
-function weekKey(dateStr){
-  const d = new Date(dateStr);
-  const day = (d.getDay()+6)%7;
-  const monday = new Date(d); monday.setDate(d.getDate()-day);
+function dayBucket(dateStr){ return { key:dateStr, label:dateStr, start:dateStr, end:dateStr }; }
+function weekBucket(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const dow = (d.getDay()+6)%7;
+  const monday = new Date(d); monday.setDate(d.getDate()-dow);
   const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
-  const f = x => `${x.getMonth()+1}/${x.getDate()}`;
-  return `${f(monday)}~${f(sunday)}`;
+  const start = fmtLocalDate(monday), end = fmtLocalDate(sunday);
+  const label = `${monday.getMonth()+1}/${monday.getDate()}~${sunday.getMonth()+1}/${sunday.getDate()}`;
+  return { key:start, label, start, end };
 }
-function monthKey(dateStr){ const [y,m] = dateStr.split("-"); return `${y}/${m}`; }
+function monthBucket(dateStr){
+  const [y,m] = dateStr.split("-");
+  const start = `${y}-${m}-01`;
+  const lastDay = new Date(Number(y), Number(m), 0).getDate();
+  const end = `${y}-${m}-${String(lastDay).padStart(2,'0')}`;
+  return { key:`${y}-${m}`, label:`${y}/${m}`, start, end };
+}
 
 function runAnalysis(){
   const rows = getFiltered();
@@ -539,24 +553,41 @@ function runAnalysis(){
     $('catChart').closest('.chart-box').innerHTML = '<p class="empty">圖表載入失敗，但下方表格資料完整無誤。</p>';
   }
 
-  let groupFn, unitLabel;
-  if(days <= 16){ groupFn = r=>r.date; unitLabel = "依日"; }
-  else if(days <= 130){ groupFn = r=>weekKey(r.date); unitLabel = "依週"; }
-  else { groupFn = r=>monthKey(r.date); unitLabel = "依月"; }
+  let bucketFn, unitLabel;
+  if(days <= 16){ bucketFn = dayBucket; unitLabel = "依日（點擊長條可篩選當天）"; }
+  else if(days <= 130){ bucketFn = weekBucket; unitLabel = "依週（點擊長條可篩選該週）"; }
+  else { bucketFn = monthBucket; unitLabel = "依月（點擊長條可篩選該月）"; }
   $('trendUnit').textContent = unitLabel;
 
   const trendMap = {};
-  rows.forEach(r=>{ const k = groupFn(r); trendMap[k] = (trendMap[k]||0) + r.amount; });
-  const trendKeys = Object.keys(trendMap).sort((a,b)=> rows.findIndex(r=>groupFn(r)===a) - rows.findIndex(r=>groupFn(r)===b));
+  rows.forEach(r=>{
+    const b = bucketFn(r.date);
+    if(!trendMap[b.key]) trendMap[b.key] = { ...b, amount: 0 };
+    trendMap[b.key].amount += r.amount;
+  });
+  const trendBuckets = Object.values(trendMap).sort((a,b)=> a.start.localeCompare(b.start));
 
   if(trendChart) trendChart.destroy();
   try{
+    $('trendChart').style.cursor = 'pointer';
     trendChart = new Chart($('trendChart'), {
       type:'bar',
-      data:{ labels: trendKeys, datasets:[{ label:'支出金額', data: trendKeys.map(k=>trendMap[k]), backgroundColor:'#2c6e64', borderRadius:4 }] },
+      data:{ labels: trendBuckets.map(b=>b.label), datasets:[{ label:'支出金額', data: trendBuckets.map(b=>b.amount), backgroundColor:'#2c6e64', borderRadius:4 }] },
       options:{ responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>fmtMoney(ctx.raw)}} },
-        scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } } } }
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>fmtMoney(ctx.raw)+'（點擊可篩選此區間）'}} },
+        scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } } },
+        onClick: (evt, elements) => {
+          if(!elements.length) return;
+          const b = trendBuckets[elements[0].index];
+          if(!b) return;
+          $('r_start').value = b.start;
+          $('r_end').value = b.end;
+          document.querySelectorAll('#quickRange button').forEach(btn=>btn.classList.remove('active'));
+          runAnalysis();
+          showToast(`已篩選區間：${b.label}（${b.start}~${b.end}）`);
+          $('catChart').closest('.card')?.scrollIntoView({behavior:'smooth', block:'start'});
+        }
+      }
     });
   }catch(err){
     $('trendChart').closest('.chart-box').innerHTML = '<p class="empty">圖表載入失敗，請稍後重新整理頁面再試。</p>';
@@ -677,24 +708,46 @@ $('runCompareBtn').addEventListener('click', ()=>{
   if(!cats.length){ showToast("請至少勾選一個支出類別"); return; }
   if(!ranges.length){ showToast("請至少新增一個有效的時間區間（起訖日都要填）"); return; }
 
-  // 表格：列=類別，欄=區間
+  // 表格：列=類別，欄=各區間金額 + 區間之間的差異
   const table = cats.map(cat=>{
     const cells = ranges.map(r=>{
       const sum = expenses.filter(e=> e.category===cat && e.date>=r.start && e.date<=r.end).reduce((s,e)=>s+e.amount,0);
       return sum;
     });
-    return { cat, cells, total: cells.reduce((a,b)=>a+b,0) };
+    const diffs = [];
+    for(let i=1;i<cells.length;i++) diffs.push(cells[i] - cells[i-1]);
+    return { cat, cells, diffs };
   });
 
-  let theadHtml = `<th>類別 ＼ 區間</th>` + ranges.map(r=>`<th class="amt">${escapeHtml(r.label)}<br><span class="note">${r.start}~${r.end}</span></th>`).join("") + `<th class="amt">合計</th>`;
+  function fmtDiff(diff){
+    const abs = Math.abs(Math.round(diff));
+    const sign = diff > 0 ? '+' : diff < 0 ? '-' : '';
+    return sign + 'NT$' + abs.toLocaleString('zh-TW');
+  }
+  function diffCellHtml(diff, base){
+    const pct = base !== 0 ? (diff/base*100) : (diff!==0 ? null : 0);
+    const color = diff > 0 ? 'var(--rose)' : diff < 0 ? 'var(--teal-deep)' : 'var(--ink-soft)';
+    const pctTxt = pct === null ? '（新增）' : `（${diff>0?'+':''}${pct.toFixed(1)}%）`;
+    return `<td class="amt" style="color:${color};font-weight:600;">${fmtDiff(diff)}<br><span class="note">${pctTxt}</span></td>`;
+  }
+
+  let theadHtml = `<th>類別 ＼ 區間</th>` + ranges.map(r=>`<th class="amt">${escapeHtml(r.label)}<br><span class="note">${r.start}~${r.end}</span></th>`).join("");
+  for(let i=1;i<ranges.length;i++){
+    theadHtml += `<th class="amt">差異<br><span class="note">${escapeHtml(ranges[i].label)} − ${escapeHtml(ranges[i-1].label)}</span></th>`;
+  }
   $('compareResultHead').innerHTML = `<tr>${theadHtml}</tr>`;
   $('compareResultBody').innerHTML = table.map(row=>`
     <tr>
       <td>${escapeHtml(row.cat)}</td>
       ${row.cells.map(v=>`<td class="amt">${fmtMoney(v)}</td>`).join("")}
-      <td class="amt"><b>${fmtMoney(row.total)}</b></td>
+      ${row.diffs.map((d,i)=>diffCellHtml(d, row.cells[i])).join("")}
     </tr>`).join("") +
-    `<tr><td><b>合計</b></td>${ranges.map((_,i)=>`<td class="amt"><b>${fmtMoney(table.reduce((s,row)=>s+row.cells[i],0))}</b></td>`).join("")}<td class="amt"><b>${fmtMoney(table.reduce((s,row)=>s+row.total,0))}</b></td></tr>`;
+    (()=>{
+      const colTotals = ranges.map((_,i)=>table.reduce((s,row)=>s+row.cells[i],0));
+      const colDiffs = [];
+      for(let i=1;i<colTotals.length;i++) colDiffs.push(colTotals[i]-colTotals[i-1]);
+      return `<tr><td><b>各區間合計</b></td>${colTotals.map(v=>`<td class="amt"><b>${fmtMoney(v)}</b></td>`).join("")}${colDiffs.map((d,i)=>diffCellHtml(d, colTotals[i])).join("")}</tr>`;
+    })();
 
   if(compareChart) compareChart.destroy();
   $('compareResultWrap').classList.remove('hidden');
