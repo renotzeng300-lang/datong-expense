@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function isAdmin()    { return isSignedIn() && myRole() == 'admin'; }
+    function isStaffOrAdmin() { return isSignedIn() && (myRole() == 'staff' || myRole() == 'admin'); }
+    function isDirector()  { return isSignedIn() && myRole() == 'director'; }
+    function isActive()    { return isSignedIn() && myRole() != 'pending' && myRole() != null; }
+
+    // ---- 使用者角色 ----
+    match /users/{uid} {
+      // 任何已登入者可以讀自己的角色文件（用來判斷自己權限）
+      allow get: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      // 使用者第一次登入時，前端會自動建立自己的文件（角色預設 pending）
+      allow create: if isSignedIn() && request.auth.uid == uid && request.resource.data.role == 'pending';
+      // 角色變更只能由 admin 執行
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ---- 支出類別設定 ----
+    match /config/categories {
+      allow read: if isActive();
+      allow write: if isStaffOrAdmin();
+    }
+
+    // ---- 支出紀錄 ----
+    match /expenses/{id} {
+      allow read: if isActive();
+      allow create: if isStaffOrAdmin();
+      allow delete: if isStaffOrAdmin();
+
+      // staff / admin 可以修改任何欄位
+      // director 只能修改核示相關欄位（不能改金額、類別、摘要等原始登打內容）
+      allow update: if isStaffOrAdmin() ||
+        (isDirector() &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['status', 'statusBy', 'statusAt', 'directorNote']));
+    }
+  }
+}

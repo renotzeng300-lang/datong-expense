@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大同發展中心 經費支出管理平台</title>
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ============ 登入畫面 ============ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <h1>大同發展中心 經費支出管理平台</h1>
+    <p class="sub">中華民國腦性麻痺協會｜請使用主任分配的帳號登入</p>
+    <div class="field">
+      <label>電子郵件</label>
+      <input type="email" id="loginEmail" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>密碼</label>
+      <input type="password" id="loginPassword" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" id="loginBtn">登入</button>
+    <div id="loginError"></div>
+    <button id="loginForgot">忘記密碼？</button>
+  </div>
+</div>
+
+<!-- ============ 待審核畫面 ============ -->
+<div id="pendingScreen" class="pending-screen hidden">
+  <h2>帳號已建立，等待設定權限</h2>
+  <p>您的登入帳號已成功建立，但尚未被指派使用權限（登打者／理事長／主任）。請聯絡主任協助於「使用者管理」設定您的角色後再重新登入。</p>
+  <button class="btn btn-ghost" id="pendingLogoutBtn" style="margin-top:14px;">登出</button>
+</div>
+
+<!-- ============ 主畫面 ============ -->
+<div class="wrap hidden" id="appRoot">
+
+  <header class="top">
+    <div class="titles">
+      <h1>大同發展中心　經費支出管理平台</h1>
+      <p>中華民國腦性麻痺協會　臺北市大同發展中心｜每日登打・即時同步・區間統計</p>
+    </div>
+    <div class="roc" id="rocToday">—</div>
+  </header>
+
+  <div class="userbar">
+    <div class="who">
+      <span id="userName">—</span>
+      <span class="role-badge" id="userRoleBadge">—</span>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="logoutBtn">登出</button>
+  </div>
+
+  <nav class="tabs" id="tabsNav">
+    <button class="tab-btn active" data-tab="entry">每日登打</button>
+    <button class="tab-btn" data-tab="analysis">統計分析</button>
+    <button class="tab-btn hidden" data-tab="users" id="usersTabBtn">使用者管理</button>
+  </nav>
+
+  <!-- ============ TAB 1: 登打 ============ -->
+  <div class="panel active" id="panel-entry">
+
+    <div class="card" id="entryFormCard">
+      <h2 id="formTitle">新增一筆支出紀錄 <span class="tag">登打</span></h2>
+      <div id="editBannerHolder"></div>
+      <form id="entryForm">
+        <div class="grid">
+          <div class="field">
+            <label>支出日期</label>
+            <input type="date" id="f_date" required>
+          </div>
+          <div class="field">
+            <label>支出類別</label>
+            <select id="f_category" required></select>
+          </div>
+          <div class="field" id="f_customCatWrap" style="display:none;">
+            <label>自訂類別名稱</label>
+            <input type="text" id="f_customCat" placeholder="請輸入新類別名稱">
+          </div>
+          <div class="field">
+            <label>支出金額（元）</label>
+            <input type="number" id="f_amount" min="0" step="1" required placeholder="0">
+          </div>
+          <div class="field">
+            <label>實支／預支</label>
+            <div class="radio-row">
+              <label><input type="radio" name="f_type" value="實支" checked> 實支</label>
+              <label><input type="radio" name="f_type" value="預支"> 預支</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>登打人員</label>
+            <input type="text" id="f_recorder" placeholder="自動填入登入者姓名" disabled>
+          </div>
+        </div>
+        <div class="field" style="margin-top:6px;">
+          <label>摘要說明</label>
+          <input type="text" id="f_desc" placeholder="例：廚藝屋採購教學食材一批" required>
+        </div>
+        <div class="field">
+          <label>備註</label>
+          <textarea id="f_note" placeholder="補充說明、經費來源、簽核流程等"></textarea>
+        </div>
+        <div class="btn-row">
+          <button type="submit" class="btn btn-primary" id="submitBtn">儲存紀錄</button>
+          <button type="button" class="btn btn-ghost" id="cancelEditBtn" style="display:none;">取消編輯</button>
+          <button type="button" class="btn btn-ghost" id="addCatBtn">＋ 新增支出類別</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>近期登打紀錄 <span class="tag" id="recentCount">0 筆</span></h2>
+      <div class="table-scroll">
+        <table id="recentTable">
+          <thead>
+            <tr><th>日期</th><th>類別</th><th>摘要</th><th class="amt">金額</th><th>性質</th><th>核示</th><th>登打人</th><th>操作</th></tr>
+          </thead>
+          <tbody id="recentBody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="recentEmpty" style="display:none;">尚無登打紀錄。</div>
+    </div>
+  </div>
+
+  <!-- ============ TAB 2: 分析 ============ -->
+  <div class="panel" id="panel-analysis">
+
+    <div class="card">
+      <h2>選擇分析區間 <span class="tag">區間篩選</span></h2>
+      <div class="quick-range" id="quickRange">
+        <button data-range="thisWeek">本週</button>
+        <button data-range="thisMonth">本月</button>
+        <button data-range="lastMonth">上月</button>
+        <button data-range="thisYear">本年度（西元）</button>
+        <button data-range="all" class="active">全部</button>
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
+        <div class="field"><label>起始日期</label><input type="date" id="r_start"></div>
+        <div class="field"><label>結束日期</label><input type="date" id="r_end"></div>
+        <div class="field">
+          <label>支出類別篩選</label>
+          <select id="r_category"><option value="">全部類別</option></select>
+        </div>
+        <div class="field">
+          <label>實支／預支篩選</label>
+          <select id="r_type"><option value="">全部</option><option value="實支">實支</option><option value="預支">預支</option></select>
+        </div>
+        <div class="field">
+          <label>核示狀態篩選</label>
+          <select id="r_status"><option value="">全部</option><option value="待核">待核</option><option value="已核可">已核可</option><option value="已退件">已退件</option></select>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="applyFilterBtn">套用篩選</button>
+        <button class="btn btn-ghost btn-sm" id="exportCsvBtn">匯出 CSV（給理事長審核）</button>
+      </div>
+      <p class="note" id="rangeLabel"></p>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat"><div class="num" id="statTotal">NT$0</div><div class="lbl">區間總支出</div></div>
+      <div class="stat"><div class="num" id="statCount">0</div><div class="lbl">支出筆數</div></div>
+      <div class="stat"><div class="num" id="statAvgDay">NT$0</div><div class="lbl">日均支出</div></div>
+      <div class="stat alt"><div class="num" id="statPending">0</div><div class="lbl">待主管核示筆數</div></div>
+    </div>
+
+    <div class="card">
+      <h2>支出類別分析</h2>
+      <div class="two-col">
+        <div class="chart-box tall"><canvas id="catChart"></canvas></div>
+        <div class="table-scroll">
+          <table id="catTable">
+            <thead><tr><th>類別</th><th class="amt">金額</th><th class="amt">占比</th><th class="amt">筆數</th></tr></thead>
+            <tbody id="catTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>支出趨勢 <span class="tag" id="trendUnit">依日</span></h2>
+      <div class="chart-box"><canvas id="trendChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>明細清單 <span class="tag" id="detailCount">0 筆</span></h2>
+      <div class="table-scroll">
+        <table id="detailTable">
+          <thead>
+            <tr><th>日期</th><th>類別</th><th>摘要</th><th class="amt">金額</th><th>性質</th><th>核示</th><th>登打人</th><th>備註</th><th>操作</th></tr>
+          </thead>
+          <tbody id="detailBody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="detailEmpty" style="display:none;">此區間內沒有符合篩選條件的紀錄。</div>
+    </div>
+  </div>
+
+  <!-- ============ TAB 3: 使用者管理（僅 admin） ============ -->
+  <div class="panel" id="panel-users">
+    <div class="card">
+      <h2>使用者角色管理 <span class="tag">僅主任可設定</span></h2>
+      <p class="note">
+        新使用者第一次登入後會自動出現在下方清單，角色預設為「待設定」。
+        請為每個人指派正確角色：<b>登打者</b>（可登打/編輯支出）、<b>理事長</b>（檢視全部資料並核示）、<b>主任</b>（完整管理權限）。
+      </p>
+      <div class="table-scroll">
+        <table id="usersTable">
+          <thead><tr><th>姓名 / Email</th><th>目前角色</th><th>設定角色</th><th>建立時間</th></tr></thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
