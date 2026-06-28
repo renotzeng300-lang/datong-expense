@@ -109,7 +109,7 @@ onAuthStateChanged(auth, async (user)=>{
     snap = await getDoc(userRef);
   }
   const data = snap.data();
-  currentUser = { uid: user.uid, email: user.email, name: data.name || user.email, role: data.role || 'pending' };
+  currentUser = { uid: user.uid, email: user.email, name: data.name || user.email, role: data.role || 'pending', onboardedRoles: data.onboardedRoles || {} };
 
   $('loginScreen').classList.add('hidden');
 
@@ -123,6 +123,10 @@ onAuthStateChanged(auth, async (user)=>{
 
   applyRoleUI();
   startListeners();
+
+  if(!currentUser.onboardedRoles[currentUser.role]){
+    setTimeout(()=>openOnboarding(currentUser.role), 500);
+  }
 });
 
 function applyRoleUI(){
@@ -938,6 +942,201 @@ $('importConfirmBtn').addEventListener('click', async ()=>{
     $('importConfirmBtn').disabled = false;
   }
 });
+
+/* ================= 新手導覽 ================= */
+const ESC = s => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function svgWrap(tabs, activeIdx, body){
+  const tabW = 516 / tabs.length;
+  let tabsHtml = '';
+  tabs.forEach((label,i)=>{
+    const x = 2 + i*tabW;
+    const active = i===activeIdx;
+    tabsHtml += `<rect x="${x+2}" y="34" width="${tabW-4}" height="24" rx="5" fill="${active?'#e3eee9':'#ffffff'}" stroke="${active?'#2c6e64':'#dde3dc'}" stroke-width="1.4"/>
+      <text x="${x+tabW/2}" y="50" text-anchor="middle" font-size="10.5" font-weight="${active?'700':'500'}" fill="${active?'#1d4f48':'#8a948f'}" font-family="sans-serif">${ESC(label)}</text>`;
+  });
+  return `<svg viewBox="0 0 520 300" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="520" height="300" rx="10" fill="#f4f6f3"/>
+    <rect x="0" y="0" width="520" height="30" rx="10" fill="#1d4f48"/>
+    <rect x="0" y="14" width="520" height="16" fill="#1d4f48"/>
+    <circle cx="18" cy="15" r="7" fill="#ffffff" opacity="0.3"/>
+    <text x="32" y="19" fill="#fff" font-size="11.5" font-weight="700" font-family="sans-serif">大同發展中心 經費支出管理平台</text>
+    ${tabsHtml}
+    <rect x="2" y="62" width="516" height="232" rx="6" fill="#ffffff" stroke="#dde3dc"/>
+    ${body}
+  </svg>`;
+}
+function bubble(x, y, text, w){
+  w = w || (text.length*7.4 + 22);
+  return `<g>
+    <rect x="${x}" y="${y-30}" width="${w}" height="26" rx="13" fill="#faecd6" stroke="#c98a2c"/>
+    <text x="${x+w/2}" y="${y-12}" text-anchor="middle" font-size="11" font-weight="700" fill="#8a5d1c" font-family="sans-serif">${ESC(text)}</text>
+    <polygon points="${x+16},${y-4} ${x+30},${y-4} ${x+20},${y+6}" fill="#faecd6" stroke="#c98a2c"/>
+  </g>`;
+}
+function fieldMock(x,y,w,label){
+  return `<rect x="${x}" y="${y+12}" width="${w}" height="20" rx="5" fill="#fff" stroke="#dde3dc"/>
+    <text x="${x}" y="${y+6}" font-size="9.5" fill="#8a948f" font-family="sans-serif">${ESC(label)}</text>`;
+}
+function btnMock(x,y,w,h,label,style){
+  const fill = style==='primary' ? '#2c6e64' : style==='amber' ? '#fff' : '#fff';
+  const stroke = style==='amber' ? '#c98a2c' : style==='danger' ? '#b14e4e' : '#2c6e64';
+  const textColor = style==='primary' ? '#fff' : style==='amber' ? '#8a5d1c' : style==='danger' ? '#b14e4e' : '#1d4f48';
+  return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="1.3"/>
+    <text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="10.5" font-weight="700" fill="${textColor}" font-family="sans-serif">${ESC(label)}</text>`;
+}
+
+const BODIES = {
+  'entry-form': () => `
+    ${fieldMock(20,78,230,'支出日期')}${fieldMock(270,78,230,'支出類別')}
+    ${fieldMock(20,124,230,'支出金額')}${fieldMock(270,124,230,'登打人員（可自行輸入姓名）')}
+    ${fieldMock(20,170,480,'摘要說明')}
+    ${btnMock(20,212,110,28,'儲存紀錄','primary')}
+    ${bubble(140,210,'填好就按這裡！')}
+  `,
+  'recent-list': () => `
+    ${fieldMock(20,80,150,'起始日期')}${fieldMock(190,80,150,'結束日期')}
+    ${btnMock(360,104,140,24,'套用日期篩選','primary')}
+    ${[0,1,2].map(i=>`<rect x="20" y="${146+i*30}" width="480" height="24" rx="4" fill="${i%2?'#fbfcfa':'#fff'}" stroke="#eef1ed"/>`).join('')}
+    ${bubble(330,100,'依日期找紀錄')}
+  `,
+  'analysis-filter': () => `
+    ${['本週','本月','上月','全部'].map((l,i)=>`<rect x="${20+i*70}" y="76" width="60" height="22" rx="11" fill="${i===1?'#2c6e64':'#fff'}" stroke="${i===1?'#2c6e64':'#dde3dc'}"/><text x="${50+i*70}" y="91" text-anchor="middle" font-size="9.5" fill="${i===1?'#fff':'#7d8b86'}" font-family="sans-serif">${l}</text>`).join('')}
+    ${fieldMock(20,116,230,'起始日期')}${fieldMock(270,116,230,'結束日期')}
+    ${[0,1,2,3,4,5].map(i=>`<rect x="${20+(i%3)*165}" y="${168+Math.floor(i/3)*26}" width="14" height="14" rx="3" fill="#2c6e64"/><text x="${38+(i%3)*165}" y="${179+Math.floor(i/3)*26}" font-size="9.5" fill="#52615e" font-family="sans-serif">類別${i+1}</text>`).join('')}
+    ${btnMock(20,228,110,26,'套用篩選','primary')}
+    ${bubble(140,226,'可複選類別！')}
+  `,
+  'analysis-pie': () => `
+    <circle cx="120" cy="175" r="62" fill="none" stroke="#2c6e64" stroke-width="32" stroke-dasharray="120 270" transform="rotate(-90 120 175)"/>
+    <circle cx="120" cy="175" r="62" fill="none" stroke="#c98a2c" stroke-width="32" stroke-dasharray="80 310" stroke-dashoffset="-120" transform="rotate(-90 120 175)"/>
+    <circle cx="120" cy="175" r="62" fill="none" stroke="#6a8caf" stroke-width="32" stroke-dasharray="190 200" stroke-dashoffset="-200" transform="rotate(-90 120 175)"/>
+    ${['郵資 38.7%','社會局方案 25%','中心活動 其他'].map((l,i)=>`<rect x="240" y="${140+i*26}" width="11" height="11" fill="${['#2c6e64','#c98a2c','#6a8caf'][i]}"/><text x="258" y="${149+i*26}" font-size="10" fill="#52615e" font-family="sans-serif">${l}</text>`).join('')}
+    ${bubble(210,120,'滑鼠移上去看金額')}
+  `,
+  'analysis-trend': () => `
+    ${[40,70,50,90,65,75].map((h,i)=>`<rect x="${30+i*75}" y="${250-h}" width="46" height="${h}" rx="3" fill="${i===3?'#c98a2c':'#2c6e64'}"/>`).join('')}
+    <rect x="${30+3*75-4}" y="${250-90-4}" width="54" height="98" rx="6" fill="none" stroke="#c98a2c" stroke-width="2" stroke-dasharray="4 3"/>
+    ${bubble(300,150,'點長條可篩選該週')}
+    ${btnMock(360,68,140,22,'↩ 返回上一個篩選','ghost')}
+  `,
+  'analysis-compare': () => `
+    ${[0,1,2,3].map(i=>`<rect x="${20+i*60}" y="76" width="14" height="14" rx="3" fill="#2c6e64"/>`).join('')}
+    <text x="100" y="87" font-size="9.5" fill="#52615e" font-family="sans-serif">勾選想比較的類別</text>
+    ${fieldMock(20,110,140,'上月')}${fieldMock(170,110,140,'本月')}
+    ${btnMock(330,128,150,24,'產生跨期比較','primary')}
+    <rect x="20" y="172" width="480" height="60" rx="6" fill="#fbfcfa" stroke="#eef1ed"/>
+    <text x="32" y="195" font-size="10.5" fill="#1d4f48" font-family="sans-serif" font-weight="700">郵資</text>
+    <text x="120" y="195" font-size="10.5" fill="#52615e" font-family="sans-serif">NT$8,200</text>
+    <text x="230" y="195" font-size="10.5" fill="#52615e" font-family="sans-serif">NT$5,100</text>
+    <text x="340" y="195" font-size="11" fill="#b14e4e" font-weight="700" font-family="sans-serif">+3,100（+60.8%）</text>
+    ${bubble(330,168,'看差異不是合計')}
+  `,
+  'analysis-detail-approve': () => `
+    <rect x="20" y="78" width="480" height="86" rx="6" fill="#fbfcfa" stroke="#eef1ed"/>
+    <text x="32" y="98" font-size="10.5" fill="#1d4f48" font-family="sans-serif">2026-06-24　社會局方案　NT$4,000</text>
+    <rect x="32" y="106" width="50" height="18" rx="9" fill="#e3eee9"/><text x="57" y="118" text-anchor="middle" font-size="9" fill="#1d4f48" font-family="sans-serif">已核可</text>
+    <rect x="32" y="132" width="220" height="26" rx="6" fill="#faecd6" stroke="#c98a2c"/>
+    <text x="40" y="148" font-size="9" fill="#8a5d1c" font-family="sans-serif">📝審核備註（理事長 王理事長）</text>
+    ${btnMock(330,100,60,24,'核可','ghost')}${btnMock(396,100,60,24,'退件','amber')}
+    ${btnMock(330,130,126,24,'＋審核備註','ghost')}
+    ${bubble(280,96,'核可／退件／留言')}
+  `,
+  'categories-manage': () => `
+    ${fieldMock(20,82,300,'新類別名稱')}
+    ${btnMock(336,94,90,28,'新增類別','primary')}
+    ${[0,1,2].map(i=>`<rect x="20" y="${140+i*30}" width="400" height="24" rx="4" fill="${i%2?'#fbfcfa':'#fff'}" stroke="#eef1ed"/><rect x="430" y="${144+i*30}" width="50" height="18" rx="4" fill="#fff" stroke="#b14e4e"/><text x="455" y="${156+i*30}" text-anchor="middle" font-size="9" fill="#b14e4e" font-family="sans-serif">刪除</text>`).join('')}
+    ${bubble(360,90,'隨時可以新增')}
+  `,
+  'import-csv': () => `
+    <rect x="20" y="80" width="480" height="48" rx="6" fill="#fbfcfa" stroke="#dde3dc" stroke-dasharray="5 4"/>
+    <text x="40" y="108" font-size="10.5" fill="#7d8b86" font-family="sans-serif">📄 選擇 CSV 檔案...</text>
+    ${fieldMock(20,140,140,'民國年度')}
+    ${btnMock(190,152,130,26,'解析並預覽','primary')}
+    ${btnMock(340,152,140,26,'確認匯入到資料庫','ghost')}
+    ${bubble(190,148,'先預覽再確認')}
+  `,
+  'users-manage': () => `
+    ${[0,1,2].map(i=>`<rect x="20" y="${82+i*36}" width="480" height="28" rx="4" fill="${i%2?'#fbfcfa':'#fff'}" stroke="#eef1ed"/><text x="32" y="${100+i*36}" font-size="10" fill="#1d4f48" font-family="sans-serif">${['王小姐 / wang@gmail.com','陳先生 / chen@gmail.com','李理事長 / li@gmail.com'][i]}</text>`).join('')}
+    ${btnMock(340,82,150,28,'設定為「登打者」','primary')}
+    ${bubble(330,78,'指派角色')}
+  `,
+};
+
+const ROLE_TABS = {
+  staff: ["每日登打","統計分析","類別管理","資料匯入"],
+  director: ["統計分析"],
+  admin: ["每日登打","統計分析","類別管理","資料匯入","使用者管理"]
+};
+
+const TOURS = {
+  staff: [
+    { tab:0, body:'entry-form', title:'每日登打：新增一筆支出', desc:'選日期、選支出類別、輸入金額與摘要，「登打人員」欄位可以自己打上您的姓名（不會綁死帳號名字）。填好按「儲存紀錄」就完成這一筆登打。' },
+    { tab:0, body:'recent-list', title:'近期登打紀錄', desc:'下方會列出最近登打的紀錄，預設只顯示 15 筆，可以用上面的日期區間篩選，或按「顯示全部紀錄」看完整清單。每一筆都可以「編輯」或「刪除」。' },
+    { tab:1, body:'analysis-filter', title:'統計分析：選擇想看的區間', desc:'可以用「本週／本月／上月」快速按鈕，或自己選起訖日期。下面的支出類別可以「複選」打勾，只看您想分析的幾個類別。' },
+    { tab:1, body:'analysis-pie', title:'支出類別圓餅圖', desc:'依篩選結果自動畫出圓餅圖，滑鼠移上去會顯示金額跟占比，旁邊也有完整的金額表格可以對照。' },
+    { tab:1, body:'analysis-trend', title:'支出趨勢圖', desc:'可以直接點擊任一根長條，會自動篩選成那一週（或那一天/那一月）的資料；點錯了可以按右上角「↩ 返回上一個篩選範圍」復原。' },
+    { tab:2, body:'categories-manage', title:'類別管理：隨時新增類別', desc:'如果遇到沒有的支出類別，可以在這裡直接新增，所有人會立即看到新選項；不再使用的類別也可以刪除（不會動到舊紀錄）。' },
+    { tab:3, body:'import-csv', title:'資料匯入（進階功能）', desc:'如果主任請您協助把舊試算表資料整批匯入，可以在這裡上傳 CSV 檔案，系統會先讓您預覽解析結果，確認沒問題才會真正寫進資料庫。' },
+  ],
+  director: [
+    { tab:0, body:'analysis-filter', title:'歡迎，理事長！', desc:'您登入後會直接看到「統計分析」，可以查看中心所有支出紀錄。用上面的快速按鈕或自訂日期，挑選想檢視的區間，也能複選支出類別。' },
+    { tab:0, body:'analysis-pie', title:'支出類別一目了然', desc:'圓餅圖會顯示各類別支出占比，旁邊表格列出詳細金額，方便快速掌握整體支出結構。' },
+    { tab:0, body:'analysis-trend', title:'支出趨勢圖可以點擊', desc:'直接點長條圖就能篩選看那一週/那一天的明細，不需要自己手動選日期；點錯了按「↩ 返回上一個篩選範圍」就能回去。' },
+    { tab:0, body:'analysis-compare', title:'類別跨期比較', desc:'勾選想比較的類別，新增兩個以上的時間區間（例如本月 vs 上月），系統會直接告訴您「差異」跟「漲跌幅」，不只是看合計數字。' },
+    { tab:0, body:'analysis-detail-approve', title:'核可、退件與審核備註', desc:'在「明細清單」每一筆紀錄旁邊，可以直接按「核可」或「退件」。也可以按「＋審核備註」留言給登打人員，您留的每一筆備註都會標明您的角色與時間，不會被覆蓋掉。' },
+  ],
+  admin: [
+    { tab:0, body:'entry-form', title:'每日登打：新增一筆支出', desc:'跟登打者一樣，您也可以直接登打支出。「登打人員」欄位可自行輸入姓名，方便辨識實際經手人。' },
+    { tab:0, body:'recent-list', title:'近期登打紀錄', desc:'可用日期區間篩選，或按「顯示全部紀錄」看完整清單，每一筆都能編輯或刪除。' },
+    { tab:1, body:'analysis-filter', title:'統計分析：彈性篩選', desc:'快速區間按鈕＋自訂日期＋複選類別，篩選條件可以自由組合。' },
+    { tab:1, body:'analysis-trend', title:'點擊趨勢圖快速篩選', desc:'點長條圖直接篩選該週/該月，按「↩ 返回上一個篩選範圍」可以回到上一步。' },
+    { tab:1, body:'analysis-compare', title:'類別跨期比較看差異', desc:'勾選類別＋新增多個時間區間，系統直接算出差異金額跟漲跌幅，方便您快速抓出異常變化。' },
+    { tab:1, body:'analysis-detail-approve', title:'核可、退件與審核備註', desc:'您跟理事長一樣可以核可/退件，也可以留審核備註，每一筆都會記錄角色、姓名跟時間。' },
+    { tab:2, body:'categories-manage', title:'類別管理', desc:'隨時新增或刪除支出類別，全部人即時同步看到。' },
+    { tab:3, body:'import-csv', title:'資料匯入', desc:'要批量匯入舊試算表資料時，在這裡上傳 CSV，先預覽再確認匯入，避免匯錯資料。' },
+    { tab:4, body:'users-manage', title:'使用者管理（只有主任能看到）', desc:'新使用者第一次登入後會出現在這裡，角色預設「待設定」，請在這裡指派「登打者」「理事長」或「主任」。要新增全新帳號，仍需要到 Firebase 後台手動建立。' },
+  ],
+};
+
+let onboardSteps = [], onboardIdx = 0, onboardRole = null;
+
+function renderOnboardStep(){
+  const step = onboardSteps[onboardIdx];
+  const tabs = ROLE_TABS[onboardRole];
+  $('onboardIllustration').innerHTML = svgWrap(tabs, step.tab, BODIES[step.body]());
+  $('onboardTitle').textContent = `${onboardIdx+1}/${onboardSteps.length}　${step.title}`;
+  $('onboardDesc').textContent = step.desc;
+  $('onboardDots').innerHTML = onboardSteps.map((_,i)=>`<span class="${i===onboardIdx?'active':''}"></span>`).join('');
+  $('onboardPrevBtn').style.visibility = onboardIdx===0 ? 'hidden' : 'visible';
+  $('onboardNextBtn').textContent = onboardIdx===onboardSteps.length-1 ? '完成，開始使用 →' : '下一步 →';
+}
+function openOnboarding(role){
+  onboardRole = role;
+  onboardSteps = TOURS[role] || [];
+  if(!onboardSteps.length) return;
+  onboardIdx = 0;
+  renderOnboardStep();
+  $('onboardOverlay').classList.remove('hidden');
+}
+async function closeOnboarding(markSeen){
+  $('onboardOverlay').classList.add('hidden');
+  if(markSeen && currentUser){
+    const updated = { ...currentUser.onboardedRoles, [onboardRole]: true };
+    currentUser.onboardedRoles = updated;
+    try{ await updateDoc(doc(db,'users', currentUser.uid), { onboardedRoles: updated }); }catch(err){ /* 不影響操作，安靜失敗即可 */ }
+  }
+}
+$('onboardNextBtn').addEventListener('click', ()=>{
+  if(onboardIdx < onboardSteps.length-1){ onboardIdx++; renderOnboardStep(); }
+  else closeOnboarding(true);
+});
+$('onboardPrevBtn').addEventListener('click', ()=>{
+  if(onboardIdx>0){ onboardIdx--; renderOnboardStep(); }
+});
+$('onboardSkipBtn').addEventListener('click', ()=>closeOnboarding(true));
+$('onboardCloseBtn').addEventListener('click', ()=>closeOnboarding(true));
+$('onboardingReopenBtn').addEventListener('click', ()=>openOnboarding(currentUser.role));
 
 /* ---------------- 初始化 ---------------- */
 $('rocToday').textContent = `今日：${rocFromISO(todayISO())}（西元 ${todayISO()}）`;

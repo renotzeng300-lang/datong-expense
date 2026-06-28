@@ -55,6 +55,7 @@
       <span id="userName">—</span>
       <span class="role-badge" id="userRoleBadge">—</span>
     </div>
+    <button class="btn btn-ghost btn-sm" id="onboardingReopenBtn">？新手指南</button>
     <button class="btn btn-ghost btn-sm" id="logoutBtn">登出</button>
   </div>
 
@@ -344,6 +345,21 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="onboard-overlay hidden" id="onboardOverlay">
+  <div class="onboard-card">
+    <button class="onboard-close" id="onboardCloseBtn">✕</button>
+    <div class="onboard-illustration" id="onboardIllustration"></div>
+    <h3 id="onboardTitle"></h3>
+    <p id="onboardDesc"></p>
+    <div class="onboard-dots" id="onboardDots"></div>
+    <div class="onboard-nav">
+      <button class="btn btn-ghost btn-sm" id="onboardPrevBtn">← 上一步</button>
+      <button class="btn btn-ghost btn-sm" id="onboardSkipBtn">略過導覽</button>
+      <button class="btn btn-primary btn-sm" id="onboardNextBtn">下一步 →</button>
+    </div>
+  </div>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>

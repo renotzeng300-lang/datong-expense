@@ -169,3 +169,27 @@ td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;}
 }
 .cat-check{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:500;color:var(--ink);margin:0;}
 .cat-check input{width:auto;margin:0;}
+
+/* ---------- 新手導覽 ---------- */
+.onboard-overlay{
+  position:fixed;inset:0;background:rgba(20,30,28,.55);z-index:200;
+  display:flex;align-items:center;justify-content:center;padding:18px;
+}
+.onboard-card{
+  background:#fff;border-radius:16px;max-width:560px;width:100%;
+  padding:24px 26px 22px;box-shadow:0 24px 60px rgba(0,0,0,.3);
+  position:relative;max-height:90vh;overflow-y:auto;
+}
+.onboard-close{
+  position:absolute;top:14px;right:16px;background:none;border:none;
+  font-size:18px;color:var(--ink-soft);cursor:pointer;line-height:1;
+}
+.onboard-illustration{margin:4px 0 16px;}
+.onboard-illustration svg{display:block;width:100%;height:auto;}
+.onboard-card h3{margin:0 0 8px;font-size:18px;color:var(--teal-deep);font-weight:700;}
+.onboard-card p{margin:0 0 16px;font-size:14.5px;line-height:1.7;color:var(--ink);white-space:pre-line;}
+.onboard-dots{display:flex;justify-content:center;gap:6px;margin-bottom:16px;}
+.onboard-dots span{width:7px;height:7px;border-radius:50%;background:var(--line);display:inline-block;}
+.onboard-dots span.active{background:var(--teal);width:18px;border-radius:5px;}
+.onboard-nav{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.onboard-nav #onboardSkipBtn{font-size:13px;color:var(--ink-soft);border-color:transparent;}
