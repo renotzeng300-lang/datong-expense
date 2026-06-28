@@ -27,6 +27,8 @@ let expenses = [];      // 從 Firestore 即時同步
 let allUsers = [];      // users 集合（僅 admin 會用到）
 let currentUser = null; // { uid, email, name, role }
 let editingId = null;
+let lastRecorderName = '';
+let showAllRecent = false;
 let catChart = null, trendChart = null;
 let unsubExpenses = null, unsubUsers = null;
 
@@ -122,9 +124,8 @@ function applyRoleUI(){
   badge.textContent = ROLE_LABEL[currentUser.role] || currentUser.role;
   badge.className = 'role-badge role-' + (currentUser.role === 'admin' ? 'admin' : currentUser.role === 'director' ? 'director' : 'staff');
 
-  $('f_recorder').value = currentUser.name;
-
-  const isAdmin = currentUser.role === 'admin';
+  lastRecorderName = currentUser.name;
+  $('f_recorder').value = lastRecorderName; = currentUser.role === 'admin';
   const isStaffOrAdmin = isAdmin || currentUser.role === 'staff';
   const isDirector = currentUser.role === 'director';
 
@@ -272,10 +273,11 @@ $('entryForm').addEventListener('submit', async (e)=>{
     desc: $('f_desc').value.trim(),
     amount: Number($('f_amount').value) || 0,
     type: document.querySelector('input[name=f_type]:checked').value,
-    recorder: currentUser.name,
+    recorder: $('f_recorder').value.trim() || currentUser.name,
     recorderUid: currentUser.uid,
     note: $('f_note').value.trim(),
   };
+  lastRecorderName = rec.recorder;
   try{
     if(editingId){
       await updateDoc(doc(db,'expenses', editingId), { ...rec, updatedAt: serverTimestamp() });
@@ -299,7 +301,7 @@ function resetForm(){
   editingId = null;
   $('entryForm').reset();
   $('f_date').value = todayISO();
-  $('f_recorder').value = currentUser.name;
+  $('f_recorder').value = lastRecorderName || currentUser.name;
   $('f_customCatWrap').style.display='none';
   $('formTitle').innerHTML = '新增一筆支出紀錄 <span class="tag">登打</span>';
   $('submitBtn').textContent = '儲存紀錄';
@@ -362,8 +364,27 @@ function approveButtons(r){
   const canApprove = currentUser.role === 'director' || currentUser.role === 'admin';
   if(!canApprove) return '';
   return `<button class="btn btn-ghost btn-sm" onclick="setStatus('${r.id}','已核可')">核可</button>
-          <button class="btn btn-amber btn-sm" onclick="setStatus('${r.id}','已退件')">退件</button>`;
+          <button class="btn btn-amber btn-sm" onclick="setStatus('${r.id}','已退件')">退件</button>
+          <button class="btn btn-ghost btn-sm" onclick="editDirectorNote('${r.id}')">${r.directorNote ? '編輯備註' : '＋審核備註'}</button>`;
 }
+function directorNoteDisplay(r){
+  if(!r.directorNote) return '';
+  return `<div class="note" style="margin-top:4px;">📝 ${escapeHtml(r.directorNote)}</div>`;
+}
+window.editDirectorNote = async function(id){
+  const rec = expenses.find(x=>x.id===id);
+  if(!rec) return;
+  const note = prompt("請輸入審核備註（理事長/主任填寫，登打者也會看到）：", rec.directorNote || "");
+  if(note === null) return; // 取消
+  try{
+    await updateDoc(doc(db,'expenses', id), {
+      directorNote: note.trim(), statusBy: currentUser.name, statusAt: serverTimestamp()
+    });
+    showToast("已儲存審核備註");
+  }catch(err){
+    showToast("⚠ 儲存失敗：" + err.message);
+  }
+};
 function editButtons(r){
   const canEdit = currentUser.role === 'staff' || currentUser.role === 'admin';
   if(!canEdit) return '';
@@ -374,14 +395,15 @@ function editButtons(r){
 /* ---------------- 近期紀錄表 (Tab1) ---------------- */
 function renderRecent(){
   const sorted = expenses.slice().sort((a,b)=> b.date.localeCompare(a.date));
-  const recent = sorted.slice(0,15);
+  const recent = showAllRecent ? sorted : sorted.slice(0,15);
   $('recentCount').textContent = expenses.length + " 筆（共）";
+  $('toggleRecentBtn').textContent = showAllRecent ? `只看最新 15 筆` : `顯示全部紀錄（共 ${expenses.length} 筆）`;
   $('recentEmpty').style.display = recent.length ? 'none':'block';
   $('recentBody').innerHTML = recent.map(r=>`
     <tr>
       <td>${r.date}</td>
       <td><span class="pill">${escapeHtml(r.category)}</span></td>
-      <td>${escapeHtml(r.desc)}</td>
+      <td>${escapeHtml(r.desc)}${directorNoteDisplay(r)}</td>
       <td class="amt">${fmtMoney(r.amount)}</td>
       <td>${escapeHtml(r.type)}</td>
       <td>${statusBadge(r.status)}</td>
@@ -389,6 +411,11 @@ function renderRecent(){
       <td class="actions-cell">${editButtons(r)}${approveButtons(r)}</td>
     </tr>`).join("");
 }
+
+$('toggleRecentBtn').addEventListener('click', ()=>{
+  showAllRecent = !showAllRecent;
+  renderRecent();
+});
 
 /* ---------------- 區間篩選 (Tab2) ---------------- */
 function setQuickRange(kind){
@@ -526,7 +553,7 @@ function runAnalysis(){
       <td>${escapeHtml(r.type)}</td>
       <td>${statusBadge(r.status)}</td>
       <td>${escapeHtml(r.recorder||"")}</td>
-      <td>${escapeHtml(r.note||"")}</td>
+      <td>${escapeHtml(r.note||"")}${directorNoteDisplay(r)}</td>
       <td class="actions-cell">${editButtons(r)}${approveButtons(r)}</td>
     </tr>`).join("");
 }

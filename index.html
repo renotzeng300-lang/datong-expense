@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>大同發展中心 經費支出管理平台</title>
+<link rel="icon" href="logo.webp" type="image/webp">
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 </head>
@@ -39,9 +40,12 @@
 <div class="wrap hidden" id="appRoot">
 
   <header class="top">
-    <div class="titles">
-      <h1>大同發展中心　經費支出管理平台</h1>
-      <p>中華民國腦性麻痺協會　臺北市大同發展中心｜每日登打・即時同步・區間統計</p>
+    <div class="titles" style="display:flex;align-items:center;gap:12px;">
+      <img src="logo.webp" alt="大同發展中心 LOGO" style="height:52px;width:52px;object-fit:contain;">
+      <div>
+        <h1>大同發展中心　經費支出管理平台</h1>
+        <p>中華民國腦性麻痺協會　臺北市大同發展中心｜每日登打・即時同步・區間統計</p>
+      </div>
     </div>
     <div class="roc" id="rocToday">—</div>
   </header>
@@ -95,7 +99,7 @@
           </div>
           <div class="field">
             <label>登打人員</label>
-            <input type="text" id="f_recorder" placeholder="自動填入登入者姓名" disabled>
+            <input type="text" id="f_recorder" placeholder="請輸入您的姓名">
           </div>
         </div>
         <div class="field" style="margin-top:6px;">
@@ -116,6 +120,9 @@
 
     <div class="card">
       <h2>近期登打紀錄 <span class="tag" id="recentCount">0 筆</span></h2>
+      <div class="btn-row" style="margin-top:0;">
+        <button type="button" class="btn btn-ghost btn-sm" id="toggleRecentBtn">顯示全部紀錄</button>
+      </div>
       <div class="table-scroll">
         <table id="recentTable">
           <thead>
