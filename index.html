@@ -57,6 +57,8 @@
   <nav class="tabs" id="tabsNav">
     <button class="tab-btn active" data-tab="entry">每日登打</button>
     <button class="tab-btn" data-tab="analysis">統計分析</button>
+    <button class="tab-btn hidden" data-tab="categories" id="categoriesTabBtn">類別管理</button>
+    <button class="tab-btn hidden" data-tab="import" id="importTabBtn">資料匯入</button>
     <button class="tab-btn hidden" data-tab="users" id="usersTabBtn">使用者管理</button>
   </nav>
 
@@ -142,10 +144,6 @@
         <div class="field"><label>起始日期</label><input type="date" id="r_start"></div>
         <div class="field"><label>結束日期</label><input type="date" id="r_end"></div>
         <div class="field">
-          <label>支出類別篩選</label>
-          <select id="r_category"><option value="">全部類別</option></select>
-        </div>
-        <div class="field">
           <label>實支／預支篩選</label>
           <select id="r_type"><option value="">全部</option><option value="實支">實支</option><option value="預支">預支</option></select>
         </div>
@@ -153,6 +151,14 @@
           <label>核示狀態篩選</label>
           <select id="r_status"><option value="">全部</option><option value="待核">待核</option><option value="已核可">已核可</option><option value="已退件">已退件</option></select>
         </div>
+      </div>
+      <div class="field">
+        <label>支出類別篩選（可複選，不勾選代表全部類別）</label>
+        <div class="btn-row" style="margin:0 0 6px;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="toggleAllChecks('r_categoryChecks', true)">全選</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="toggleAllChecks('r_categoryChecks', false)">清除</button>
+        </div>
+        <div class="cat-check-grid" id="r_categoryChecks"></div>
       </div>
       <div class="btn-row">
         <button class="btn btn-primary btn-sm" id="applyFilterBtn">套用篩選</button>
@@ -187,6 +193,45 @@
     </div>
 
     <div class="card">
+      <h2>類別跨期比較 <span class="tag">可複選類別＋可複選時間區間</span></h2>
+      <p class="note">勾選想比較的支出類別，再新增多個時間區間（例如「上月」vs「本月」，或任意自訂起訖日），即可一次比較每個類別在不同期間的支出。</p>
+      <div class="field">
+        <label>選擇支出類別（可複選）</label>
+        <div class="btn-row" style="margin:0 0 6px;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="toggleAllChecks('cmp_categoryChecks', true)">全選</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="toggleAllChecks('cmp_categoryChecks', false)">清除</button>
+        </div>
+        <div class="cat-check-grid" id="cmp_categoryChecks"></div>
+      </div>
+      <div class="field">
+        <label>比較時間區間（可新增多筆）</label>
+        <div class="btn-row" style="margin:0 0 10px;">
+          <button type="button" class="btn btn-ghost btn-sm" id="cmpThisWeekBtn">快速加入：本週</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="cmpThisMonthBtn">快速加入：本月</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="cmpLastMonthBtn">快速加入：上月</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="addCompareRangeBtn">＋ 新增自訂區間</button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>區間名稱</th><th>起始日期</th><th>結束日期</th><th>操作</th></tr></thead>
+            <tbody id="compareRangesBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="btn-row"><button class="btn btn-primary btn-sm" id="runCompareBtn">產生跨期比較</button></div>
+
+      <div id="compareResultWrap" class="hidden" style="margin-top:16px;">
+        <div class="chart-box tall"><canvas id="compareChart"></canvas></div>
+        <div class="table-scroll" style="margin-top:10px;">
+          <table id="compareResultTable">
+            <thead id="compareResultHead"></thead>
+            <tbody id="compareResultBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>明細清單 <span class="tag" id="detailCount">0 筆</span></h2>
       <div class="table-scroll">
         <table id="detailTable">
@@ -213,6 +258,70 @@
           <thead><tr><th>姓名 / Email</th><th>目前角色</th><th>設定角色</th><th>建立時間</th></tr></thead>
           <tbody id="usersBody"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: 類別管理 ============ -->
+  <div class="panel" id="panel-categories">
+    <div class="card">
+      <h2>新增支出類別 <span class="tag">隨時可新增</span></h2>
+      <p class="note">新增的類別會立即同步給所有人，登打表單下拉選單會馬上看到新選項。</p>
+      <div class="grid" style="grid-template-columns:2fr auto;align-items:end;">
+        <div class="field" style="margin-bottom:0;">
+          <label>新類別名稱</label>
+          <input type="text" id="newCatInput" placeholder="例：防疫物資">
+        </div>
+        <button class="btn btn-primary" id="addCatBtn2">新增類別</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>目前所有支出類別 <span class="tag" id="catManagerCount"></span></h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>類別名稱</th><th class="amt">已使用筆數</th><th>操作</th></tr></thead>
+          <tbody id="categoriesManagerBody"></tbody>
+        </table>
+      </div>
+      <p class="note">刪除類別不會更動既有支出紀錄的類別文字，只是讓該類別之後不再出現在登打下拉選單中。</p>
+    </div>
+  </div>
+
+  <!-- ============ TAB: 資料匯入 ============ -->
+  <div class="panel" id="panel-import">
+    <div class="card">
+      <h2>CSV 批量匯入 <span class="tag">適合匯入舊試算表資料</span></h2>
+      <p class="note">
+        請從 Google 試算表開啟要匯入的工作表分頁 → 檔案 → 下載 → 逗號分隔值（.csv）。
+        CSV 表頭需包含「月」「日」「支出類別」「摘要」「支出金額」等欄位（跟原試算表一致即可，欄位順序不限）。
+        若一次有多個分頁（例如每週一個分頁），請逐個分頁匯出後依序匯入。
+      </p>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+        <div class="field">
+          <label>試算表年度（民國年）</label>
+          <input type="number" id="importRocYear" value="115">
+        </div>
+        <div class="field">
+          <label>選擇 CSV 檔案</label>
+          <input type="file" id="importFile" accept=".csv">
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="importParseBtn">解析並預覽</button>
+      </div>
+
+      <div id="importPreviewWrap" class="hidden" style="margin-top:14px;">
+        <h2 style="font-size:14px;">預覽 <span class="tag" id="importPreviewCount"></span></h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>日期</th><th>類別</th><th>摘要</th><th class="amt">金額</th><th>性質</th><th>核示</th></tr></thead>
+            <tbody id="importPreviewBody"></tbody>
+          </table>
+        </div>
+        <p class="note">僅顯示前 8 筆預覽，實際會依解析結果全部匯入。確認無誤後請點下方「確認匯入」。</p>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" id="importConfirmBtn">確認匯入到資料庫</button>
+        </div>
       </div>
     </div>
   </div>

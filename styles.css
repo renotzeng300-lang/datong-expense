@@ -148,3 +148,11 @@ td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;}
 .toast.show{opacity:1;transform:translateY(0);}
 
 .role-select{display:inline-block;width:auto;}
+
+.cat-check-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:6px 10px;background:#fafbf9;border:1px solid var(--line);border-radius:8px;
+  padding:10px;max-height:220px;overflow-y:auto;
+}
+.cat-check{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--ink);margin:0;}
+.cat-check input{width:auto;margin:0;}

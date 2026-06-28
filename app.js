@@ -6,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
-  onSnapshot, getDoc, serverTimestamp, query, orderBy
+  onSnapshot, getDoc, serverTimestamp, query, orderBy, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const app = initializeApp(firebaseConfig);
@@ -14,7 +14,14 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 /* ---------------- 狀態 ---------------- */
-const DEFAULT_CATEGORIES = ["郵資","社會局方案","中心活動","設施設備","建築物養護","志工津貼","生日禮金","水電費","每月固定支出","拜拜","電信","中心文具","其他"];
+const DEFAULT_CATEGORIES = [
+  "郵資","社會局方案","感恩聖仁方案","中心活動","中心活動-預支",
+  "設施設備-社會局","設施設備-自籌","建築物養護-社會局","建築物養護-自籌",
+  "志工津貼","生日禮金","水電費","每月固定支出-預支","拜拜","電信",
+  "文具用品","台電","影印","日用品","膳食費","服務對象獎勵金",
+  "水質檢測","印花","治療師公會費","日間照顧費用溢繳退費","其他"
+];
+let compareRanges = []; // 跨期比較用的自訂時間區間清單
 let categories = DEFAULT_CATEGORIES.slice();
 let expenses = [];      // 從 Firestore 即時同步
 let allUsers = [];      // users 集合（僅 admin 會用到）
@@ -129,6 +136,8 @@ function applyRoleUI(){
     switchTab('analysis');
   }
   $('usersTabBtn').classList.toggle('hidden', !isAdmin);
+  $('categoriesTabBtn').classList.toggle('hidden', !isStaffOrAdmin);
+  $('importTabBtn').classList.toggle('hidden', !isStaffOrAdmin);
 }
 
 /* ---------------- Tab 切換 ---------------- */
@@ -163,6 +172,7 @@ function startListeners(){
   unsubExpenses = onSnapshot(q, (snap)=>{
     expenses = snap.docs.map(d=>({ id: d.id, ...d.data() }));
     renderRecent();
+    renderCategoryManager();
     if($('panel-analysis').classList.contains('active')) runAnalysis();
   }, (err)=>{
     showToast("⚠ 資料同步失敗：" + err.message);
@@ -177,11 +187,27 @@ function startListeners(){
   }
 }
 
-/* ---------------- 類別下拉 ---------------- */
+/* ---------------- 類別下拉 / 核取方塊 / 管理 ---------------- */
 function renderCategoryOptions(){
   $('f_category').innerHTML = categories.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
-  $('r_category').innerHTML = `<option value="">全部類別</option>` + categories.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+  renderCategoryChecks('r_categoryChecks');
+  renderCategoryChecks('cmp_categoryChecks');
+  renderCategoryManager();
 }
+function renderCategoryChecks(containerId){
+  const el = $(containerId);
+  if(!el) return;
+  const prevChecked = new Set(Array.from(el.querySelectorAll('input:checked')).map(i=>i.value));
+  el.innerHTML = categories.map(c=>`
+    <label class="cat-check"><input type="checkbox" value="${escapeHtml(c)}" ${prevChecked.has(c)?'checked':''}> ${escapeHtml(c)}</label>
+  `).join("");
+}
+function getCheckedCats(containerId){
+  return Array.from($(containerId).querySelectorAll('input:checked')).map(i=>i.value);
+}
+window.toggleAllChecks = function(containerId, state){
+  $(containerId).querySelectorAll('input[type=checkbox]').forEach(i=>{ i.checked = state; });
+};
 $('f_category').addEventListener('change', e=>{
   $('f_customCatWrap').style.display = e.target.value === "其他" ? "block" : "none";
 });
@@ -195,6 +221,42 @@ $('addCatBtn').addEventListener('click', async ()=>{
     showToast("已新增類別「"+name.trim()+"」");
   }
 });
+
+function renderCategoryManager(){
+  const el = $('categoriesManagerBody');
+  if(!el) return;
+  if($('catManagerCount')) $('catManagerCount').textContent = categories.length + ' 個類別';
+  const usage = {};
+  expenses.forEach(r=>{ usage[r.category] = (usage[r.category]||0) + 1; });
+  el.innerHTML = categories.map(c=>`
+    <tr>
+      <td>${escapeHtml(c)}</td>
+      <td class="amt">${usage[c]||0} 筆</td>
+      <td class="actions-cell">
+        <button class="btn btn-danger btn-sm" onclick="deleteCategory('${encodeURIComponent(c)}')">刪除</button>
+      </td>
+    </tr>`).join("");
+}
+$('addCatBtn2').addEventListener('click', async ()=>{
+  const name = $('newCatInput').value.trim();
+  if(!name){ showToast("請先輸入類別名稱"); return; }
+  if(categories.includes(name)){ showToast("這個類別已經存在"); return; }
+  categories.push(name);
+  await setDoc(doc(db,'config','categories'), { list: categories });
+  renderCategoryOptions();
+  $('newCatInput').value = "";
+  showToast("已新增類別「"+name+"」");
+});
+window.deleteCategory = async function(encoded){
+  const name = decodeURIComponent(encoded);
+  const inUse = expenses.some(r=>r.category === name);
+  if(inUse && !confirm(`「${name}」已有支出紀錄使用此類別，刪除後舊紀錄仍會保留原類別名稱，但下拉選單將不再顯示此選項。確定要刪除嗎？`)) return;
+  if(!inUse && !confirm(`確定要刪除類別「${name}」嗎？`)) return;
+  categories = categories.filter(c=>c!==name);
+  await setDoc(doc(db,'config','categories'), { list: categories });
+  renderCategoryOptions();
+  showToast("已刪除類別「"+name+"」");
+};
 
 /* ---------------- 新增 / 編輯表單 ---------------- */
 $('entryForm').addEventListener('submit', async (e)=>{
@@ -368,13 +430,13 @@ $('applyFilterBtn').addEventListener('click', ()=>{
 function getFiltered(){
   const start = $('r_start').value;
   const end = $('r_end').value;
-  const cat = $('r_category').value;
+  const cats = getCheckedCats('r_categoryChecks');
   const type = $('r_type').value;
   const status = $('r_status').value;
   return expenses.filter(r=>{
     if(start && r.date < start) return false;
     if(end && r.date > end) return false;
-    if(cat && r.category !== cat) return false;
+    if(cats.length && !cats.includes(r.category)) return false;
     if(type && r.type !== type) return false;
     if(status && (r.status||'待核') !== status) return false;
     return true;
@@ -523,6 +585,215 @@ window.changeRole = async function(uid, role){
     showToast("⚠ 更新失敗：" + err.message);
   }
 };
+
+/* ---------------- 類別跨期比較（可複選類別 + 可複選時間區間） ---------------- */
+function addCompareRangeRow(prefill){
+  const id = 'cr_' + Math.random().toString(36).slice(2,8);
+  compareRanges.push({ id, label: prefill?.label || `區間${compareRanges.length+1}`, start: prefill?.start || '', end: prefill?.end || '' });
+  renderCompareRangeRows();
+}
+function renderCompareRangeRows(){
+  $('compareRangesBody').innerHTML = compareRanges.map(r=>`
+    <tr>
+      <td><input type="text" value="${escapeHtml(r.label)}" onchange="updateCompareRange('${r.id}','label',this.value)" style="min-width:90px;"></td>
+      <td><input type="date" value="${r.start}" onchange="updateCompareRange('${r.id}','start',this.value)"></td>
+      <td><input type="date" value="${r.end}" onchange="updateCompareRange('${r.id}','end',this.value)"></td>
+      <td><button class="btn btn-danger btn-sm" onclick="removeCompareRange('${r.id}')">移除</button></td>
+    </tr>`).join("") || `<tr><td colspan="4" class="empty">尚未新增比較區間，請點下方「＋新增比較區間」。</td></tr>`;
+}
+window.updateCompareRange = function(id, field, value){
+  const r = compareRanges.find(x=>x.id===id);
+  if(r) r[field] = value;
+};
+window.removeCompareRange = function(id){
+  compareRanges = compareRanges.filter(x=>x.id!==id);
+  renderCompareRangeRows();
+};
+$('addCompareRangeBtn').addEventListener('click', ()=>addCompareRangeRow());
+$('cmpThisWeekBtn').addEventListener('click', ()=>{
+  setQuickRange('thisWeek');
+  addCompareRangeRow({ label:'本週', start: $('r_start').value, end: $('r_end').value });
+});
+$('cmpThisMonthBtn').addEventListener('click', ()=>{
+  setQuickRange('thisMonth');
+  addCompareRangeRow({ label:'本月', start: $('r_start').value, end: $('r_end').value });
+});
+$('cmpLastMonthBtn').addEventListener('click', ()=>{
+  setQuickRange('lastMonth');
+  addCompareRangeRow({ label:'上月', start: $('r_start').value, end: $('r_end').value });
+});
+
+let compareChart = null;
+$('runCompareBtn').addEventListener('click', ()=>{
+  const cats = getCheckedCats('cmp_categoryChecks');
+  const ranges = compareRanges.filter(r=>r.start && r.end);
+  if(!cats.length){ showToast("請至少勾選一個支出類別"); return; }
+  if(!ranges.length){ showToast("請至少新增一個有效的時間區間（起訖日都要填）"); return; }
+
+  // 表格：列=類別，欄=區間
+  const table = cats.map(cat=>{
+    const cells = ranges.map(r=>{
+      const sum = expenses.filter(e=> e.category===cat && e.date>=r.start && e.date<=r.end).reduce((s,e)=>s+e.amount,0);
+      return sum;
+    });
+    return { cat, cells, total: cells.reduce((a,b)=>a+b,0) };
+  });
+
+  let theadHtml = `<th>類別 ＼ 區間</th>` + ranges.map(r=>`<th class="amt">${escapeHtml(r.label)}<br><span class="note">${r.start}~${r.end}</span></th>`).join("") + `<th class="amt">合計</th>`;
+  $('compareResultHead').innerHTML = `<tr>${theadHtml}</tr>`;
+  $('compareResultBody').innerHTML = table.map(row=>`
+    <tr>
+      <td>${escapeHtml(row.cat)}</td>
+      ${row.cells.map(v=>`<td class="amt">${fmtMoney(v)}</td>`).join("")}
+      <td class="amt"><b>${fmtMoney(row.total)}</b></td>
+    </tr>`).join("") +
+    `<tr><td><b>合計</b></td>${ranges.map((_,i)=>`<td class="amt"><b>${fmtMoney(table.reduce((s,row)=>s+row.cells[i],0))}</b></td>`).join("")}<td class="amt"><b>${fmtMoney(table.reduce((s,row)=>s+row.total,0))}</b></td></tr>`;
+
+  if(compareChart) compareChart.destroy();
+  compareChart = new Chart($('compareChart'), {
+    type:'bar',
+    data:{
+      labels: cats,
+      datasets: ranges.map((r,i)=>({
+        label: r.label,
+        data: table.map(row=>row.cells[i]),
+        backgroundColor: CHART_COLORS[i%CHART_COLORS.length],
+        borderRadius:4
+      }))
+    },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ tooltip:{callbacks:{label:ctx=>ctx.dataset.label+'：'+fmtMoney(ctx.raw)}} },
+      scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } } } }
+  });
+  $('compareResultWrap').classList.remove('hidden');
+  showToast("已產生跨期比較");
+});
+
+/* ---------------- CSV 批量匯入 ---------------- */
+let importParsedRows = [];
+function parseCsvText(text){
+  // 簡單 CSV 解析器，支援雙引號包住的欄位與欄位內逗號/換行
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i++; }
+        else inQuotes = false;
+      }else field += c;
+    }else{
+      if(c === '"') inQuotes = true;
+      else if(c === ','){ row.push(field); field=''; }
+      else if(c === '\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else if(c === '\r'){ /* skip */ }
+      else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r=> r.some(c=>c && c.trim() !== ''));
+}
+function findCol(headers, keywords){
+  for(let i=0;i<headers.length;i++){
+    const h = (headers[i]||'').replace(/\s/g,'');
+    if(keywords.some(k=>h.includes(k))) return i;
+  }
+  return -1;
+}
+$('importParseBtn').addEventListener('click', async ()=>{
+  const file = $('importFile').files[0];
+  if(!file){ showToast("請先選擇要匯入的 CSV 檔案"); return; }
+  const rocYear = Number($('importRocYear').value) || 115;
+  const gregYear = rocYear + 1911;
+  const text = await file.text();
+  const rows = parseCsvText(text);
+  if(!rows.length){ showToast("檔案讀取失敗或沒有內容"); return; }
+
+  const headers = rows[0];
+  const idxMonth = findCol(headers, ['月']);
+  const idxDay = findCol(headers, ['日']);
+  const idxCat = findCol(headers, ['類別']);
+  const idxDesc = findCol(headers, ['摘要']);
+  const idxAmount = findCol(headers, ['金額']);
+  const idxType = findCol(headers, ['實支','預支申請']);
+  const idxNote = findCol(headers, ['備註']);
+  const idxStatus = findCol(headers, ['核示','核可','主管']);
+
+  if(idxMonth<0 || idxDay<0 || idxCat<0 || idxAmount<0){
+    showToast("⚠ 找不到「月」「日」「支出類別」「支出金額」其中欄位，請確認 CSV 表頭與範例一致");
+    return;
+  }
+
+  importParsedRows = [];
+  for(let r=1; r<rows.length; r++){
+    const row = rows[r];
+    const monthStr = (row[idxMonth]||'').trim();
+    const dayStr = (row[idxDay]||'').trim();
+    const cat = (row[idxCat]||'').trim();
+    const desc = (row[idxDesc]||'').trim();
+    let amountStr = (row[idxAmount]||'').trim();
+    if(!monthStr || !dayStr || !cat) continue;
+    if(desc === '小計' || cat === '小計') continue;
+    const month = parseInt(monthStr, 10);
+    const day = parseInt(dayStr, 10);
+    if(!month || !day) continue;
+    amountStr = amountStr.replace(/[^\d.]/g, '');
+    const amount = parseFloat(amountStr);
+    if(!amount || isNaN(amount)) continue;
+    const typeRaw = idxType>=0 ? (row[idxType]||'') : '';
+    const type = typeRaw.includes('預支') ? '預支' : '實支';
+    const statusRaw = idxStatus>=0 ? (row[idxStatus]||'').trim() : '';
+    let status = '待核';
+    if(statusRaw){ status = statusRaw.includes('退') ? '已退件' : '已核可'; }
+    const date = `${gregYear}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    importParsedRows.push({
+      date, category: cat, desc: desc || '(無摘要)', amount,
+      type, status, note: idxNote>=0 ? (row[idxNote]||'').trim() : '',
+      recorder: currentUser.name, recorderUid: currentUser.uid
+    });
+  }
+
+  $('importPreviewCount').textContent = importParsedRows.length + " 筆可匯入";
+  $('importPreviewBody').innerHTML = importParsedRows.slice(0,8).map(r=>`
+    <tr><td>${r.date}</td><td>${escapeHtml(r.category)}</td><td>${escapeHtml(r.desc)}</td><td class="amt">${fmtMoney(r.amount)}</td><td>${r.type}</td><td>${r.status}</td></tr>
+  `).join("") || `<tr><td colspan="6" class="empty">沒有解析出任何可匯入的資料列</td></tr>`;
+  $('importPreviewWrap').classList.remove('hidden');
+  $('importConfirmBtn').disabled = importParsedRows.length === 0;
+  showToast(`已解析 ${importParsedRows.length} 筆，請確認預覽後按下「確認匯入」`);
+});
+
+$('importConfirmBtn').addEventListener('click', async ()=>{
+  if(!importParsedRows.length){ showToast("沒有可匯入的資料"); return; }
+  if(!confirm(`即將寫入 ${importParsedRows.length} 筆支出紀錄到資料庫，此動作無法一次性撤銷（需逐筆刪除），確定要匯入嗎？`)) return;
+  $('importConfirmBtn').disabled = true;
+  try{
+    const newCats = importParsedRows.map(r=>r.category).filter(c=>!categories.includes(c));
+    if(newCats.length){
+      categories = categories.concat([...new Set(newCats)]);
+      await setDoc(doc(db,'config','categories'), { list: categories });
+      renderCategoryOptions();
+    }
+    let i = 0;
+    while(i < importParsedRows.length){
+      const batch = writeBatch(db);
+      const chunk = importParsedRows.slice(i, i+400);
+      chunk.forEach(r=>{
+        const ref = doc(collection(db,'expenses'));
+        batch.set(ref, { ...r, note: (r.note ? r.note + ' ' : '') + '（批量匯入）', createdAt: serverTimestamp() });
+      });
+      await batch.commit();
+      i += 400;
+    }
+    showToast(`匯入完成，共新增 ${importParsedRows.length} 筆紀錄`);
+    importParsedRows = [];
+    $('importPreviewWrap').classList.add('hidden');
+    $('importFile').value = '';
+  }catch(err){
+    showToast("⚠ 匯入失敗：" + err.message);
+  }finally{
+    $('importConfirmBtn').disabled = false;
+  }
+});
 
 /* ---------------- 初始化 ---------------- */
 $('rocToday').textContent = `今日：${rocFromISO(todayISO())}（西元 ${todayISO()}）`;
