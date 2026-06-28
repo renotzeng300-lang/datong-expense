@@ -115,25 +115,14 @@ tbody td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:to
 tbody tr:nth-child(even){background:#fbfcfa;}
 tbody tr:hover{background:#f2f5f1;}
 #detailTable td:nth-child(3), #recentTable td:nth-child(3){ max-width:240px; white-space:normal; word-break:break-word; }
-#detailTable td:nth-child(8){ max-width:200px; white-space:normal; word-break:break-word; }
-#detailTable td:nth-child(7), #recentTable td:nth-child(7){ overflow-wrap:break-word; word-break:break-word; }
+#detailTable td:nth-child(8){ max-width:220px; white-space:normal; word-break:break-word; }
+#detailTable td:nth-child(7), #recentTable td:nth-child(7){ overflow-wrap:break-word; word-break:break-word; max-width:110px; }
 
-#detailTable{table-layout:fixed;}
-#detailTable th:nth-child(1),#detailTable td:nth-child(1){width:8%;}
-#detailTable th:nth-child(2),#detailTable td:nth-child(2){width:9%;}
-#detailTable th:nth-child(3),#detailTable td:nth-child(3){width:16%;max-width:none;}
-#detailTable th:nth-child(4),#detailTable td:nth-child(4){width:8%;}
-#detailTable th:nth-child(5),#detailTable td:nth-child(5){width:6%;}
-#detailTable th:nth-child(6),#detailTable td:nth-child(6){width:8%;}
-#detailTable th:nth-child(7),#detailTable td:nth-child(7){width:7%;}
-#detailTable th:nth-child(8),#detailTable td:nth-child(8){width:18%;max-width:none;}
-#detailTable th:nth-child(9),#detailTable td:nth-child(9){width:20%;}
-#detailTable{min-width:900px;}
-
+.actions-cell{min-width:170px;}
 .actions-cell{display:flex;flex-direction:column;gap:6px;align-items:stretch;}
 .actions-cell .action-row{display:flex;gap:6px;}
-.actions-cell .action-row button{flex:1;min-width:0;margin:0;padding:6px 4px;}
-.actions-cell > button{margin:0;width:100%;text-align:center;}
+.actions-cell .action-row button{flex:1 1 auto;white-space:nowrap;margin:0;padding:6px 10px;}
+.actions-cell > button{margin:0;width:100%;text-align:center;white-space:nowrap;}
 .director-note{
   margin-top:6px;padding:6px 9px;background:var(--amber-pale);color:#8a5d1c;
   border-radius:6px;font-size:13px;line-height:1.45;border-left:3px solid var(--amber);
