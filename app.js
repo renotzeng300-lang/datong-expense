@@ -16,7 +16,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const emailEnabled = !!(emailjsConfig.publicKey && emailjsConfig.serviceId);
 if(emailEnabled && window.emailjs){
-  try{ window.emailjs.init(emailjsConfig.publicKey); }catch(e){ console.warn('EmailJS 初始化失敗', e); }
+  try{ window.emailjs.init({ publicKey: emailjsConfig.publicKey }); }catch(e){ console.warn('EmailJS 初始化失敗', e); }
 }
 
 /* ---------------- 狀態 ---------------- */
