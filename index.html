@@ -6,6 +6,7 @@
 <title>大同發展中心 經費支出管理平台</title>
 <link rel="icon" href="logo.png" type="image/png">
 <link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
@@ -263,6 +264,17 @@
 
   <!-- ============ TAB 3: 使用者管理（僅 admin） ============ -->
   <div class="panel" id="panel-users">
+    <div class="card">
+      <h2>Email 通知設定 <span class="tag">主任專屬</span></h2>
+      <p class="note">同仁登打新支出時，系統會自動寄信通知以下信箱。多個信箱請用逗號分隔。審核結果（核可／退件／審核備註）則會自動寄信通知原登打人員，不需要額外設定。</p>
+      <div class="field">
+        <label>主任通知信箱</label>
+        <input type="text" id="notifyAdminEmailsInput" placeholder="例如：boss@gmail.com, another@gmail.com">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="saveNotifyEmailsBtn">儲存通知信箱</button>
+      </div>
+    </div>
     <div class="card">
       <h2>使用者角色管理 <span class="tag">僅主任可設定</span></h2>
       <p class="note">

@@ -1,4 +1,5 @@
 import { firebaseConfig } from './firebase-config.js';
+import { emailjsConfig } from './emailjs-config.js';
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -12,6 +13,10 @@ import {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const emailEnabled = !!(emailjsConfig.publicKey && emailjsConfig.serviceId);
+if(emailEnabled && window.emailjs){
+  try{ window.emailjs.init(emailjsConfig.publicKey); }catch(e){ console.warn('EmailJS 初始化失敗', e); }
+}
 
 /* ---------------- 狀態 ---------------- */
 const DEFAULT_CATEGORIES = [
@@ -58,6 +63,67 @@ function showToast(msg){
   t._timer = setTimeout(()=>t.classList.remove('show'), 2300);
 }
 function $(id){ return document.getElementById(id); }
+
+/* ---------------- Email 通知 ---------------- */
+async function getNotifyAdminEmails(){
+  try{
+    const snap = await getDoc(doc(db,'config','notifyEmails'));
+    if(snap.exists() && Array.isArray(snap.data().adminEmails)) return snap.data().adminEmails.filter(Boolean);
+  }catch(e){ /* 沒設定過也沒關係 */ }
+  return [];
+}
+async function getUserEmailByUid(uid){
+  if(!uid) return null;
+  try{
+    const snap = await getDoc(doc(db,'users', uid));
+    if(snap.exists()) return snap.data().email || null;
+  }catch(e){ /* 沒有讀取權限或查無資料，安靜失敗 */ }
+  return null;
+}
+async function sendNotifyEmail(templateId, params){
+  if(!emailEnabled || !window.emailjs || !templateId) return;
+  try{
+    await window.emailjs.send(emailjsConfig.serviceId, templateId, params);
+  }catch(err){
+    console.warn('Email 通知寄送失敗：', err);
+  }
+}
+async function notifyAdminsNewEntry(rec){
+  if(!emailEnabled) return;
+  const emails = await getNotifyAdminEmails();
+  for(const email of emails){
+    await sendNotifyEmail(emailjsConfig.templateNewEntry, {
+      to_email: email,
+      recorder_name: rec.recorder || '',
+      date: rec.date,
+      category: rec.category,
+      amount: fmtMoney(rec.amount),
+      type: rec.type,
+      desc: rec.desc,
+      note: rec.note || '（無）',
+      link: location.href
+    });
+  }
+}
+async function notifyRecorderReview(rec, statusText, noteText){
+  if(!emailEnabled) return;
+  if(!rec.recorderUid || rec.recorderUid === currentUser.uid) return; // 沒有登打人資料，或審核者就是登打人本人，不需通知
+  const email = await getUserEmailByUid(rec.recorderUid);
+  if(!email) return;
+  await sendNotifyEmail(emailjsConfig.templateReview, {
+    to_email: email,
+    recorder_name: rec.recorder || '',
+    date: rec.date,
+    category: rec.category,
+    amount: fmtMoney(rec.amount),
+    desc: rec.desc,
+    status: statusText || '（僅留言，未變更核示狀態）',
+    note: noteText || '（無留言）',
+    reviewer_name: currentUser.name,
+    reviewer_role: ROLE_LABEL[currentUser.role] || '',
+    link: location.href
+  });
+}
 
 /* ---------------- 登入 / 登出 ---------------- */
 $('loginBtn').addEventListener('click', async ()=>{
@@ -198,6 +264,11 @@ function startListeners(){
       allUsers = snap.docs.map(d=>({ id:d.id, ...d.data() }));
       renderUsers();
     });
+    getDoc(doc(db,'config','notifyEmails')).then(snap=>{
+      if(snap.exists() && Array.isArray(snap.data().adminEmails)){
+        $('notifyAdminEmailsInput').value = snap.data().adminEmails.join(', ');
+      }
+    }).catch(()=>{});
   }
 }
 
@@ -298,6 +369,7 @@ $('entryForm').addEventListener('submit', async (e)=>{
     }else{
       await addDoc(collection(db,'expenses'), { ...rec, status:'待核', createdAt: serverTimestamp() });
       showToast("已新增一筆支出紀錄");
+      if(currentUser.role === 'staff') notifyAdminsNewEntry(rec);
     }
     if(!categories.includes(category)){
       categories.push(category);
@@ -358,11 +430,13 @@ window.deleteEntry = async function(id){
 };
 
 window.setStatus = async function(id, status){
+  const rec = expenses.find(x=>x.id===id);
   try{
     await updateDoc(doc(db,'expenses', id), {
       status, statusBy: currentUser.name, statusAt: serverTimestamp()
     });
     showToast(status === '已核可' ? "已核可" : "已退件");
+    if(rec) notifyRecorderReview(rec, status, null);
   }catch(err){
     showToast("⚠ 操作失敗：" + err.message);
   }
@@ -415,6 +489,7 @@ window.addDirectorNote = async function(id){
       statusBy: currentUser.name, statusAt: serverTimestamp()
     });
     showToast("已新增審核備註");
+    notifyRecorderReview(rec, null, note.trim());
   }catch(err){
     showToast("⚠ 儲存失敗：" + err.message);
   }
@@ -707,6 +782,15 @@ window.changeRole = async function(uid, role){
     showToast("⚠ 更新失敗：" + err.message);
   }
 };
+$('saveNotifyEmailsBtn').addEventListener('click', async ()=>{
+  const emails = $('notifyAdminEmailsInput').value.split(',').map(s=>s.trim()).filter(Boolean);
+  try{
+    await setDoc(doc(db,'config','notifyEmails'), { adminEmails: emails });
+    showToast("已儲存通知信箱");
+  }catch(err){
+    showToast("⚠ 儲存失敗：" + err.message);
+  }
+});
 
 /* ---------------- 類別跨期比較（可複選類別 + 可複選時間區間） ---------------- */
 function addCompareRangeRow(prefill){

@@ -15,8 +15,8 @@ service cloud.firestore {
 
     // ---- 使用者角色 ----
     match /users/{uid} {
-      // 任何已登入者可以讀自己的角色文件（用來判斷自己權限）
-      allow get: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      // 任何已登入且非待設定者可以查詢單一使用者資料（供Email通知查詢收件人信箱用），但不能列出全部使用者
+      allow get: if isActive();
       allow list: if isAdmin();
       // 使用者第一次登入時，前端會自動建立自己的文件（角色預設 pending）
       allow create: if isSignedIn() && request.auth.uid == uid && request.resource.data.role == 'pending';
@@ -25,6 +25,12 @@ service cloud.firestore {
         (isSignedIn() && request.auth.uid == uid &&
          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['onboardedRoles']));
       allow delete: if isAdmin();
+    }
+
+    // ---- Email 通知收件人設定 ----
+    match /config/notifyEmails {
+      allow read: if isActive();
+      allow write: if isAdmin();
     }
 
     // ---- 支出類別設定 ----
