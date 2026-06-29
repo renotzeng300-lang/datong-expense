@@ -276,6 +276,26 @@
       </div>
     </div>
     <div class="card">
+      <h2>新增使用者 <span class="tag">直接建立帳號＋指定角色</span></h2>
+      <p class="note">在這裡新增的同仁，建立完成後就能直接用下面設定的 Email + 密碼登入，不需要再到 Firebase 後台手動開帳號。請把帳密告訴對方，建議請對方登入後自行用「忘記密碼」更換成自己的密碼。</p>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+        <div class="field"><label>姓名</label><input type="text" id="newUserName" placeholder="例：王小明"></div>
+        <div class="field"><label>Email</label><input type="email" id="newUserEmail" placeholder="example@gmail.com"></div>
+        <div class="field"><label>暫時密碼（至少6位）</label><input type="text" id="newUserPassword" placeholder="例：Datong2026"></div>
+        <div class="field">
+          <label>角色</label>
+          <select id="newUserRole">
+            <option value="staff">登打者</option>
+            <option value="director">理事長</option>
+            <option value="admin">主任</option>
+          </select>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="createUserBtn">建立使用者</button>
+      </div>
+    </div>
+    <div class="card">
       <h2>使用者角色管理 <span class="tag">僅主任可設定</span></h2>
       <p class="note">
         新使用者第一次登入後會自動出現在下方清單，角色預設為「待設定」。

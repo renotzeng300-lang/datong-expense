@@ -18,8 +18,10 @@ service cloud.firestore {
       // 任何已登入且非待設定者可以查詢單一使用者資料（供Email通知查詢收件人信箱用），但不能列出全部使用者
       allow get: if isActive();
       allow list: if isAdmin();
-      // 使用者第一次登入時，前端會自動建立自己的文件（角色預設 pending）
-      allow create: if isSignedIn() && request.auth.uid == uid && request.resource.data.role == 'pending';
+      // 使用者第一次登入時，前端會自動建立自己的文件（角色預設 pending）；
+      // 主任也可以直接幫新同仁建立帳號資料並指定角色
+      allow create: if isAdmin() ||
+        (isSignedIn() && request.auth.uid == uid && request.resource.data.role == 'pending');
       // 角色變更只能由 admin 執行；但每個人可以自行記錄「新手導覽是否已看過」
       allow update: if isAdmin() ||
         (isSignedIn() && request.auth.uid == uid &&

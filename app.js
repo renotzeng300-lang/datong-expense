@@ -1,9 +1,10 @@
 import { firebaseConfig } from './firebase-config.js';
 import { emailjsConfig } from './emailjs-config.js';
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail,
+  createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
@@ -789,6 +790,42 @@ $('saveNotifyEmailsBtn').addEventListener('click', async ()=>{
     showToast("已儲存通知信箱");
   }catch(err){
     showToast("⚠ 儲存失敗：" + err.message);
+  }
+});
+
+$('createUserBtn').addEventListener('click', async ()=>{
+  const name = $('newUserName').value.trim();
+  const email = $('newUserEmail').value.trim();
+  const password = $('newUserPassword').value;
+  const role = $('newUserRole').value;
+  if(!name || !email || !password){ showToast("請填寫姓名、Email 與密碼"); return; }
+  if(password.length < 6){ showToast("密碼至少需要 6 個字元"); return; }
+
+  $('createUserBtn').disabled = true;
+  let secondaryApp = null;
+  try{
+    // 用「次要 App 實例」建立新帳號，避免影響目前主任自己的登入狀態
+    secondaryApp = initializeApp(firebaseConfig, 'Secondary-' + Date.now());
+    const secondaryAuth = getAuth(secondaryApp);
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    const newUid = cred.user.uid;
+    await signOut(secondaryAuth);
+
+    await setDoc(doc(db,'users', newUid), {
+      email, name, role, createdAt: serverTimestamp()
+    });
+
+    showToast(`已建立使用者「${name}」，請告知對方帳密登入`);
+    $('newUserName').value = ''; $('newUserEmail').value=''; $('newUserPassword').value='';
+  }catch(err){
+    let msg = err.message;
+    if(err.code === 'auth/email-already-in-use') msg = '這個 Email 已經有帳號了';
+    else if(err.code === 'auth/invalid-email') msg = 'Email 格式不正確';
+    else if(err.code === 'auth/weak-password') msg = '密碼太簡單，至少需要 6 個字元';
+    showToast("⚠ 建立失敗：" + msg);
+  }finally{
+    if(secondaryApp){ try{ await deleteApp(secondaryApp); }catch(e){} }
+    $('createUserBtn').disabled = false;
   }
 });
 
