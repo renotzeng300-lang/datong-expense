@@ -38,6 +38,8 @@ let showAllRecent = false;
 let trendDrillSnapshot = null;
 let catChart = null, trendChart = null;
 let unsubExpenses = null, unsubUsers = null;
+let highlightRecordId = null;  // 剛新增的那一筆，用來在列表閃一下＋自動捲動過去
+let highlightTimer = null;
 
 const ROLE_LABEL = { staff:"登打者", director:"理事長", admin:"主任", pending:"待設定" };
 const CHART_COLORS = ["#2c6e64","#c98a2c","#6a8caf","#b14e4e","#7a9b5c","#a17fb5","#cf9b5c","#4a8b8b","#8d6a4f","#5c7fa8","#a85c7f","#7f8d4f","#967fa8"];
@@ -59,6 +61,12 @@ function rocFromISO(iso){
 }
 function fmtMoney(n){ return "NT$" + Math.round(n||0).toLocaleString("zh-TW"); }
 function escapeHtml(s){ return (s||"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toMillis(ts){
+  if(!ts) return 0;
+  if(typeof ts.toMillis === 'function') return ts.toMillis();
+  if(typeof ts.seconds === 'number') return ts.seconds * 1000;
+  return 0;
+}
 function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
@@ -421,7 +429,12 @@ $('entryForm').addEventListener('submit', async (e)=>{
   let category = $('f_category').value;
   if(category === "其他"){
     const custom = $('f_customCat').value.trim();
-    if(custom) category = custom;
+    if(!custom){
+      showToast("⚠ 請填寫自訂類別名稱");
+      $('f_customCat').focus();
+      return;
+    }
+    category = custom;
   }
   const rec = {
     date: $('f_date').value,
@@ -439,8 +452,11 @@ $('entryForm').addEventListener('submit', async (e)=>{
       await updateDoc(doc(db,'expenses', editingId), { ...rec, updatedAt: serverTimestamp() });
       showToast("已更新該筆紀錄");
     }else{
-      await addDoc(collection(db,'expenses'), { ...rec, status:'待核', createdAt: serverTimestamp() });
-      showToast("已新增一筆支出紀錄");
+      const docRef = await addDoc(collection(db,'expenses'), { ...rec, status:'待核', createdAt: serverTimestamp() });
+      showToast("已新增一筆支出紀錄，請於下方列表確認內容無誤");
+      highlightRecordId = docRef.id;
+      clearTimeout(highlightTimer);
+      highlightTimer = setTimeout(()=>{ highlightRecordId = null; renderRecent(); }, 5000);
       if(currentUser.role === 'staff') notifyAdminsNewEntry(rec);
     }
     if(!categories.includes(category)){
@@ -582,13 +598,13 @@ function renderRecent(){
   let filtered = expenses.slice();
   if(start) filtered = filtered.filter(r=>r.date >= start);
   if(end) filtered = filtered.filter(r=>r.date <= end);
-  const sorted = filtered.sort((a,b)=> b.date.localeCompare(a.date));
+  const sorted = filtered.sort((a,b)=> b.date.localeCompare(a.date) || (toMillis(b.createdAt) - toMillis(a.createdAt)));
   const recent = showAllRecent ? sorted : sorted.slice(0,15);
   $('recentCount').textContent = (start||end) ? `${sorted.length} 筆（篩選結果，共 ${expenses.length} 筆）` : `${expenses.length} 筆（共）`;
   $('toggleRecentBtn').textContent = showAllRecent ? `只看最新 15 筆` : `顯示全部（共 ${sorted.length} 筆）`;
   $('recentEmpty').style.display = recent.length ? 'none':'block';
   $('recentBody').innerHTML = recent.map(r=>`
-    <tr>
+    <tr data-id="${r.id}" class="${r.id===highlightRecordId?'just-added':''}">
       <td>${r.date}</td>
       <td><span class="pill">${escapeHtml(r.category)}</span></td>
       <td>${escapeHtml(r.desc)}${directorNoteDisplay(r)}</td>
@@ -598,6 +614,10 @@ function renderRecent(){
       <td>${escapeHtml(r.recorder||"")}</td>
       <td class="actions-cell">${editButtons(r)}${approveButtons(r)}</td>
     </tr>`).join("");
+  if(highlightRecordId){
+    const row = $('recentBody').querySelector(`tr[data-id="${highlightRecordId}"]`);
+    if(row) row.scrollIntoView({behavior:'smooth', block:'center'});
+  }
 }
 
 $('toggleRecentBtn').addEventListener('click', ()=>{
