@@ -62,9 +62,15 @@
     </div>
   </div>
 
+  <div class="pending-banner hidden" id="pendingReviewBanner">
+    <div class="pending-banner-icon">⏳</div>
+    <div class="pending-banner-text">您有 <b id="pendingReviewCount">0</b> 筆支出紀錄正在等待您審核</div>
+    <button class="btn btn-primary btn-sm" id="pendingReviewBtn">立即查看 →</button>
+  </div>
+
   <nav class="tabs" id="tabsNav">
-    <button class="tab-btn active" data-tab="entry">每日登打</button>
-    <button class="tab-btn" data-tab="analysis">統計分析</button>
+    <button class="tab-btn active" data-tab="entry">每日登打<span class="tab-badge hidden" id="entryTabBadge">0</span></button>
+    <button class="tab-btn" data-tab="analysis">統計分析<span class="tab-badge hidden" id="analysisTabBadge">0</span></button>
     <button class="tab-btn hidden" data-tab="categories" id="categoriesTabBtn">類別管理</button>
     <button class="tab-btn hidden" data-tab="import" id="importTabBtn">資料匯入</button>
     <button class="tab-btn hidden" data-tab="users" id="usersTabBtn">使用者管理</button>

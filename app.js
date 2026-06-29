@@ -196,6 +196,46 @@ onAuthStateChanged(auth, async (user)=>{
   }
 });
 
+function getPendingCount(){
+  return expenses.filter(r => !r.status || r.status === '待核').length;
+}
+function updatePendingReviewUI(){
+  const canApprove = currentUser && (currentUser.role === 'director' || currentUser.role === 'admin');
+  const banner = $('pendingReviewBanner');
+  const entryBadge = $('entryTabBadge');
+  const analysisBadge = $('analysisTabBadge');
+  if(!canApprove){
+    banner.classList.add('hidden');
+    entryBadge.classList.add('hidden');
+    analysisBadge.classList.add('hidden');
+    return;
+  }
+  const n = getPendingCount();
+  banner.classList.toggle('hidden', n === 0);
+  $('pendingReviewCount').textContent = n;
+  // 理事長看不到「每日登打」分頁，角標只給能看到該分頁的人
+  const entryTabVisible = !document.querySelector('[data-tab="entry"]').classList.contains('hidden');
+  entryBadge.classList.toggle('hidden', n === 0 || !entryTabVisible);
+  entryBadge.textContent = n;
+  analysisBadge.classList.toggle('hidden', n === 0);
+  analysisBadge.textContent = n;
+}
+$('pendingReviewBtn').addEventListener('click', ()=>{
+  $('r_start').value = '';
+  $('r_end').value = '';
+  $('r_type').value = '';
+  $('r_status').value = '待核';
+  document.querySelectorAll('#quickRange button').forEach(b=>b.classList.remove('active'));
+  toggleAllChecks('r_categoryChecks', false);
+  trendDrillSnapshot = null;
+  $('trendBackBtn').classList.add('hidden');
+  switchTab('analysis');
+  showToast(`已篩選出 ${getPendingCount()} 筆待審核紀錄`);
+  setTimeout(()=>{
+    $('detailTable').closest('.card')?.scrollIntoView({behavior:'smooth', block:'start'});
+  }, 80);
+});
+
 function applyRoleUI(){
   $('userName').textContent = currentUser.name + "（" + currentUser.email + "）";
   const badge = $('userRoleBadge');
@@ -219,6 +259,8 @@ function applyRoleUI(){
   $('usersTabBtn').classList.toggle('hidden', !isAdmin);
   $('categoriesTabBtn').classList.toggle('hidden', !isStaffOrAdmin);
   $('importTabBtn').classList.toggle('hidden', !isStaffOrAdmin);
+
+  updatePendingReviewUI();
 }
 
 /* ---------------- Tab 切換 ---------------- */
@@ -254,6 +296,7 @@ function startListeners(){
     expenses = snap.docs.map(d=>({ id: d.id, ...d.data() }));
     renderRecent();
     renderCategoryManager();
+    updatePendingReviewUI();
     if($('panel-analysis').classList.contains('active')) runAnalysis();
   }, (err)=>{
     showToast("⚠ 資料同步失敗：" + err.message);
