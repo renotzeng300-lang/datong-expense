@@ -115,9 +115,11 @@ thead th{text-align:left;font-size:14px;color:var(--ink-soft);font-weight:700;bo
 tbody td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.5;}
 tbody tr:nth-child(even){background:#fbfcfa;}
 tbody tr:hover{background:#f2f5f1;}
-#detailTable td:nth-child(3), #recentTable td:nth-child(3){ max-width:240px; white-space:normal; word-break:break-word; }
-#detailTable td:nth-child(8){ max-width:220px; white-space:normal; word-break:break-word; }
-#detailTable td:nth-child(7), #recentTable td:nth-child(7){ overflow-wrap:break-word; word-break:break-word; max-width:110px; }
+#detailTable td:nth-child(3), #recentTable td:nth-child(3){ max-width:240px; min-width:150px; white-space:normal; word-break:break-word; }
+#detailTable td:nth-child(8){ max-width:220px; min-width:150px; white-space:normal; word-break:break-word; }
+#detailTable td:nth-child(7), #recentTable td:nth-child(7){ overflow-wrap:break-word; word-break:break-word; max-width:110px; min-width:80px; }
+
+.director-note{min-width:130px;max-width:100%;}
 
 .actions-cell{min-width:170px;}
 .actions-cell{display:flex;flex-direction:column;gap:6px;align-items:stretch;}
