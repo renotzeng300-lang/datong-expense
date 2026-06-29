@@ -41,6 +41,8 @@ let unsubExpenses = null, unsubUsers = null;
 
 const ROLE_LABEL = { staff:"登打者", director:"理事長", admin:"主任", pending:"待設定" };
 const CHART_COLORS = ["#2c6e64","#c98a2c","#6a8caf","#b14e4e","#7a9b5c","#a17fb5","#cf9b5c","#4a8b8b","#8d6a4f","#5c7fa8","#a85c7f","#7f8d4f","#967fa8"];
+// 正式網址（Email通知連結固定用這個，不要用 location.href，避免在分頁/子路徑下產生錯誤連結）
+const SITE_URL = "https://renotzeng300-lang.github.io/datong-expense/";
 
 /* ---------------- 工具 ---------------- */
 function fmtLocalDate(d){
@@ -102,7 +104,8 @@ async function notifyAdminsNewEntry(rec){
       type: rec.type,
       desc: rec.desc,
       note: rec.note || '（無）',
-      link: location.href
+      link: SITE_URL,
+      view_hint: '請登入後點選「統計分析」分頁查看明細並進行核可／退件'
     });
   }
 }
@@ -122,7 +125,8 @@ async function notifyRecorderReview(rec, statusText, noteText){
     note: noteText || '（無留言）',
     reviewer_name: currentUser.name,
     reviewer_role: ROLE_LABEL[currentUser.role] || '',
-    link: location.href
+    link: SITE_URL,
+    view_hint: '請登入後點選「每日登打」分頁查看完整紀錄'
   });
 }
 
@@ -295,7 +299,7 @@ function startListeners(){
   unsubExpenses = onSnapshot(q, (snap)=>{
     expenses = snap.docs.map(d=>({ id: d.id, ...d.data() }));
     renderRecent();
-    renderCategoryManager();
+    renderCategoryOptions();
     updatePendingReviewUI();
     if($('panel-analysis').classList.contains('active')) runAnalysis();
   }, (err)=>{
@@ -317,8 +321,32 @@ function startListeners(){
 }
 
 /* ---------------- 類別下拉 / 核取方塊 / 管理 ---------------- */
+function getCategoryUsageCounts(){
+  const usage = {};
+  expenses.forEach(r=>{ usage[r.category] = (usage[r.category]||0) + 1; });
+  return usage;
+}
 function renderCategoryOptions(){
-  $('f_category').innerHTML = categories.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+  const prevValue = $('f_category').value;
+  const usage = getCategoryUsageCounts();
+  const base = categories.filter(c => c !== '其他');
+  const used = base.filter(c => usage[c]).sort((a,b)=> (usage[b]||0) - (usage[a]||0));
+  const top = used.slice(0, 8);
+  const topSet = new Set(top);
+  const rest = base.filter(c => !topSet.has(c));
+  const hasOther = categories.includes('其他');
+
+  let html = '';
+  if(top.length){
+    html += `<optgroup label="常用類別">` + top.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('') + `</optgroup>`;
+    html += `<optgroup label="其他類別">` + rest.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('') + `</optgroup>`;
+  }else{
+    html += rest.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  }
+  if(hasOther) html += `<option value="其他">其他</option>`;
+  $('f_category').innerHTML = html;
+  if(categories.includes(prevValue)) $('f_category').value = prevValue;
+
   renderCategoryChecks('r_categoryChecks');
   renderCategoryChecks('cmp_categoryChecks');
   renderCategoryManager();
@@ -487,9 +515,9 @@ window.setStatus = async function(id, status){
 };
 
 function statusBadge(status){
-  if(status==="已核可") return `<span class="badge badge-approved">已核可</span>`;
-  if(status==="已退件") return `<span class="badge badge-rejected">已退件</span>`;
-  return `<span class="badge badge-pending">待核</span>`;
+  if(status==="已核可") return `<span class="badge badge-approved">✓ 已核可</span>`;
+  if(status==="已退件") return `<span class="badge badge-rejected">✕ 已退件</span>`;
+  return `<span class="badge badge-pending">⏳ 待核</span>`;
 }
 function approveButtons(r){
   const canApprove = currentUser.role === 'director' || currentUser.role === 'admin';
