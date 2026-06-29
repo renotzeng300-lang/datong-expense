@@ -665,7 +665,7 @@ function runAnalysis(){
       type: 'doughnut',
       data: { labels: catEntries.map(e=>e[0]), datasets: [{ data: catEntries.map(e=>e[1].amount), backgroundColor: catEntries.map((_,i)=>CHART_COLORS[i%CHART_COLORS.length]), borderWidth:2, borderColor:'#fff' }] },
       options: { responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{ position:'right', labels:{ boxWidth:12, font:{size:11} } }, tooltip:{callbacks:{label:ctx=>ctx.label+'：'+fmtMoney(ctx.raw)+'（'+(total?(ctx.raw/total*100).toFixed(1):'0.0')+'%）'}} } }
+        plugins:{ legend:{ position: window.innerWidth < 640 ? 'bottom' : 'right', labels:{ boxWidth:12, font:{size:11} } }, tooltip:{callbacks:{label:ctx=>ctx.label+'：'+fmtMoney(ctx.raw)+'（'+(total?(ctx.raw/total*100).toFixed(1):'0.0')+'%）'}} } }
     });
   }catch(err){
     $('catChart').closest('.chart-box').innerHTML = '<p class="empty">圖表載入失敗，但下方表格資料完整無誤。</p>';

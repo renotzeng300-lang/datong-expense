@@ -70,6 +70,7 @@ header.top .roc{font-size:14px;color:var(--teal);background:var(--teal-pale);bor
 .role-director{background:var(--amber-pale);color:#8a5d1c;}
 .role-admin{background:#e6e6f7;color:#3d3d8a;}
 .userbar button{font-size:14.5px;}
+.userbar-actions{display:flex;gap:8px;}
 
 nav.tabs{display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
 nav.tabs button{
@@ -193,3 +194,58 @@ td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;}
 .onboard-dots span.active{background:var(--teal);width:18px;border-radius:5px;}
 .onboard-nav{display:flex;justify-content:space-between;align-items:center;gap:8px;}
 .onboard-nav #onboardSkipBtn{font-size:13px;color:var(--ink-soft);border-color:transparent;}
+
+/* ================= 響應式設計（手機 / 平板） ================= */
+
+/* 分頁導覽列：內容超出時可橫向滑動，而不是擠成多行 */
+nav.tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
+nav.tabs button{flex:0 0 auto;}
+
+/* 表格容器加上左右滑動提示的淡淡陰影，提示使用者還有內容 */
+.table-scroll{
+  position:relative;
+  background:
+    linear-gradient(to right, #fff 0, rgba(255,255,255,0) 16px),
+    linear-gradient(to left, #fff 0, rgba(255,255,255,0) 16px) right,
+    linear-gradient(to right, rgba(0,0,0,.06), rgba(0,0,0,0) 16px),
+    linear-gradient(to left, rgba(0,0,0,.06), rgba(0,0,0,0) 16px) right;
+  background-repeat:no-repeat;
+  background-size:16px 100%, 16px 100%, 8px 100%, 8px 100%;
+  background-attachment:local, local, scroll, scroll;
+}
+
+@media (max-width:760px){
+  .wrap{padding:12px 12px 50px;}
+  .card{padding:14px;}
+
+  header.top{padding-bottom:10px;}
+  header.top .titles img{height:38px !important;width:38px !important;}
+  header.top .titles h1{font-size:17.5px;letter-spacing:0;}
+  header.top .titles p{font-size:12px;}
+  header.top .roc{font-size:12px;padding:5px 10px;white-space:normal;line-height:1.4;}
+
+  .userbar{flex-direction:column;align-items:stretch;}
+  .userbar .who{justify-content:space-between;}
+  .userbar-actions{display:flex;gap:6px;}
+  .userbar-actions button{flex:1;}
+
+  nav.tabs button{font-size:14.5px;padding:9px 12px;}
+
+  .card h2{font-size:16px;}
+  .stat .num{font-size:21px;}
+
+  .cat-check-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));max-height:180px;}
+
+  .onboard-card{padding:18px 16px 18px;}
+  .onboard-card h3{font-size:16px;}
+  .onboard-card p{font-size:13.5px;}
+
+  .chart-box{height:240px;}
+  .chart-box.tall{height:380px;}
+}
+
+@media (max-width:420px){
+  header.top .titles h1{font-size:15.5px;}
+  .grid{grid-template-columns:1fr !important;}
+  .actions-cell{min-width:0;}
+}
