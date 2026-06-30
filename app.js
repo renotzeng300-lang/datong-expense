@@ -34,6 +34,7 @@ let trashedExpenses = []; // 垃圾桶（軟刪除的紀錄）
 let allUsers = [];      // users 集合（僅 admin 會用到）
 let currentUser = null; // { uid, email, name, role }
 let editingId = null;
+let editingOriginalSnapshot = null;
 let lastRecorderName = '';
 let showAllRecent = false;
 let trendDrillSnapshot = null;
@@ -491,6 +492,55 @@ window.deleteCategory = async function(encoded){
   showToast("已刪除類別「"+name+"」");
 };
 
+/* ---------------- 多人協作衝突偵測 ---------------- */
+function recordFingerprint(rec){
+  if(!rec) return '∅';
+  return JSON.stringify({
+    status: rec.status || '待核',
+    statusBy: rec.statusBy || null,
+    notesLen: Array.isArray(rec.directorNotes) ? rec.directorNotes.length : 0,
+    amount: rec.amount, category: rec.category, desc: rec.desc, date: rec.date,
+    type: rec.type, note: rec.note || '',
+    deleted: !!rec.deletedAt
+  });
+}
+async function fetchFreshExpense(id){
+  try{
+    const snap = await getDoc(doc(db,'expenses', id));
+    if(!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() };
+  }catch(err){
+    return undefined; // 網路或權限問題，視為「無法確認」，呼叫端自行決定如何處理
+  }
+}
+function describeConflict(expectedRec, freshRec){
+  if((freshRec.status||'待核') !== (expectedRec.status||'待核')){
+    return `目前核示狀態已是「${freshRec.status||'待核'}」${freshRec.statusBy ? `（由 ${freshRec.statusBy} 操作）` : ''}`;
+  }
+  if(!!freshRec.deletedAt !== !!expectedRec.deletedAt){
+    return freshRec.deletedAt ? `已被 ${freshRec.deletedBy||'其他人'} 移到垃圾桶` : '已被其他人從垃圾桶復原';
+  }
+  return `內容已被 ${freshRec.recorder||'其他人'} 修改過`;
+}
+/**
+ * 在執行「會覆蓋資料」的動作前，確認這筆紀錄沒有被別人剛剛異動過。
+ * 回傳 true：可以放心執行；false：使用者選擇取消，呼叫端應中止動作。
+ */
+async function guardConflict(id, expectedRec, actionLabel){
+  if(!expectedRec) return true; // 沒有本地版本可比對，直接放行
+  const fresh = await fetchFreshExpense(id);
+  if(fresh === undefined) return true; // 連線異常，不擋使用者操作，交由後續寫入動作本身判斷成敗
+  if(fresh === null){
+    showToast(`⚠ 這筆紀錄已被永久刪除，無法${actionLabel}`);
+    return false;
+  }
+  if(recordFingerprint(fresh) !== recordFingerprint(expectedRec)){
+    const detail = describeConflict(expectedRec, fresh);
+    return confirm(`⚠ 偵測到衝突：${detail}\n畫面上的版本可能不是最新的。\n\n是否仍要繼續「${actionLabel}」？\n（建議按「取消」，重新整理確認最新內容後再操作）`);
+  }
+  return true;
+}
+
 /* ---------------- 新增 / 編輯表單 ---------------- */
 $('entryForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
@@ -517,6 +567,8 @@ $('entryForm').addEventListener('submit', async (e)=>{
   lastRecorderName = rec.recorder;
   try{
     if(editingId){
+      const proceed = await guardConflict(editingId, editingOriginalSnapshot, '儲存變更');
+      if(!proceed){ showToast("已取消儲存，請重新整理確認最新內容"); return; }
       await updateDoc(doc(db,'expenses', editingId), { ...rec, updatedAt: serverTimestamp() });
       showToast("已更新該筆紀錄");
     }else{
@@ -540,6 +592,7 @@ $('entryForm').addEventListener('submit', async (e)=>{
 
 function resetForm(){
   editingId = null;
+  editingOriginalSnapshot = null;
   $('entryForm').reset();
   $('f_date').value = todayISO();
   $('f_recorder').value = lastRecorderName || currentUser.name;
@@ -555,6 +608,7 @@ window.startEdit = function(id){
   const rec = expenses.find(x=>x.id===id);
   if(!rec) return;
   editingId = id;
+  editingOriginalSnapshot = { ...rec };
   $('f_date').value = rec.date;
   if(!categories.includes(rec.category)){ categories.push(rec.category); renderCategoryOptions(); }
   $('f_category').value = categories.includes(rec.category) ? rec.category : "其他";
@@ -577,6 +631,9 @@ window.startEdit = function(id){
 
 window.deleteEntry = async function(id){
   if(!confirm("確定要刪除這筆支出紀錄嗎？\n刪除後會移到垃圾桶，30天內隨時可以復原。")) return;
+  const rec = expenses.find(x=>x.id===id);
+  const proceed = await guardConflict(id, rec, '刪除');
+  if(!proceed){ showToast("已取消刪除"); return; }
   try{
     await updateDoc(doc(db,'expenses', id), {
       deletedAt: serverTimestamp(),
@@ -589,6 +646,9 @@ window.deleteEntry = async function(id){
   }
 };
 window.restoreEntry = async function(id){
+  const rec = trashedExpenses.find(x=>x.id===id);
+  const proceed = await guardConflict(id, rec, '復原');
+  if(!proceed){ showToast("已取消復原"); renderTrash(); return; }
   try{
     await updateDoc(doc(db,'expenses', id), {
       deletedAt: null, deletedBy: null, deletedByUid: null
@@ -602,6 +662,8 @@ window.permanentlyDeleteEntry = async function(id){
   const rec = trashedExpenses.find(x=>x.id===id);
   const label = rec ? `${rec.date}「${rec.desc}」` : '這筆紀錄';
   if(!confirm(`確定要永久刪除${label}嗎？\n此操作無法復原，請特別小心。`)) return;
+  const proceed = await guardConflict(id, rec, '永久刪除');
+  if(!proceed){ showToast("已取消永久刪除"); renderTrash(); return; }
   try{
     await deleteDoc(doc(db,'expenses', id));
     showToast("已永久刪除");
@@ -624,6 +686,9 @@ window.emptyTrash = async function(){
 
 window.setStatus = async function(id, status){
   const rec = expenses.find(x=>x.id===id);
+  const actionLabel = status === '已核可' ? '核可' : '退件';
+  const proceed = await guardConflict(id, rec, actionLabel);
+  if(!proceed){ showToast("已取消操作"); return; }
   try{
     await updateDoc(doc(db,'expenses', id), {
       status, statusBy: currentUser.name, statusAt: serverTimestamp()
