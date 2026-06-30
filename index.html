@@ -135,6 +135,10 @@
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:8px;">
         <div class="field" style="margin-bottom:0;"><label>起始日期</label><input type="date" id="rec_start"></div>
         <div class="field" style="margin-bottom:0;"><label>結束日期</label><input type="date" id="rec_end"></div>
+        <div class="field" style="margin-bottom:0;">
+          <label>關鍵字搜尋</label>
+          <input type="text" id="rec_search" placeholder="搜尋摘要、類別、登打人、備註、金額…">
+        </div>
       </div>
       <div class="btn-row" style="margin-top:0;">
         <button type="button" class="btn btn-primary btn-sm" id="recFilterBtn">套用日期篩選</button>
@@ -175,6 +179,10 @@
         <div class="field">
           <label>核示狀態篩選</label>
           <select id="r_status"><option value="">全部</option><option value="待核">待核</option><option value="已核可">已核可</option><option value="已退件">已退件</option></select>
+        </div>
+        <div class="field">
+          <label>關鍵字搜尋</label>
+          <input type="text" id="r_search" placeholder="搜尋摘要、類別、登打人、備註、金額…">
         </div>
       </div>
       <div class="field">

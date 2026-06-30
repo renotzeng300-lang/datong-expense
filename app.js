@@ -68,6 +68,17 @@ function toMillis(ts){
   if(typeof ts.seconds === 'number') return ts.seconds * 1000;
   return 0;
 }
+function matchesKeyword(r, keyword){
+  if(!keyword) return true;
+  const kw = keyword.trim().toLowerCase();
+  if(!kw) return true;
+  const haystack = [
+    r.date, r.category, r.desc, r.note, r.recorder, r.type,
+    r.status || '待核', r.amount != null ? String(r.amount) : '',
+    rocFromISO(r.date)
+  ].join(' ').toLowerCase();
+  return haystack.includes(kw);
+}
 function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
@@ -238,6 +249,7 @@ $('pendingReviewBtn').addEventListener('click', ()=>{
   $('r_end').value = '';
   $('r_type').value = '';
   $('r_status').value = '待核';
+  $('r_search').value = '';
   document.querySelectorAll('#quickRange button').forEach(b=>b.classList.remove('active'));
   toggleAllChecks('r_categoryChecks', false);
   trendDrillSnapshot = null;
@@ -688,14 +700,18 @@ function editButtons(r){
 function renderRecent(){
   const start = $('rec_start').value;
   const end = $('rec_end').value;
+  const keyword = $('rec_search').value;
   let filtered = expenses.slice();
   if(start) filtered = filtered.filter(r=>r.date >= start);
   if(end) filtered = filtered.filter(r=>r.date <= end);
+  if(keyword.trim()) filtered = filtered.filter(r=>matchesKeyword(r, keyword));
   const sorted = filtered.sort((a,b)=> b.date.localeCompare(a.date) || (toMillis(b.createdAt) - toMillis(a.createdAt)));
   const recent = showAllRecent ? sorted : sorted.slice(0,15);
-  $('recentCount').textContent = (start||end) ? `${sorted.length} 筆（篩選結果，共 ${expenses.length} 筆）` : `${expenses.length} 筆（共）`;
+  const isFiltered = start || end || keyword.trim();
+  $('recentCount').textContent = isFiltered ? `${sorted.length} 筆（篩選結果，共 ${expenses.length} 筆）` : `${expenses.length} 筆（共）`;
   $('toggleRecentBtn').textContent = showAllRecent ? `只看最新 15 筆` : `顯示全部（共 ${sorted.length} 筆）`;
   $('recentEmpty').style.display = recent.length ? 'none':'block';
+  $('recentEmpty').textContent = keyword.trim() ? '查無符合關鍵字的紀錄。' : '尚無登打紀錄。';
   $('recentBody').innerHTML = recent.map(r=>`
     <tr data-id="${r.id}" class="${r.id===highlightRecordId?'just-added':''}">
       <td>${r.date}</td>
@@ -719,8 +735,12 @@ $('toggleRecentBtn').addEventListener('click', ()=>{
 });
 $('recFilterBtn').addEventListener('click', ()=>{ showAllRecent = true; renderRecent(); });
 $('recClearBtn').addEventListener('click', ()=>{
-  $('rec_start').value = ''; $('rec_end').value = '';
+  $('rec_start').value = ''; $('rec_end').value = ''; $('rec_search').value = '';
   showAllRecent = false;
+  renderRecent();
+});
+$('rec_search').addEventListener('input', ()=>{
+  showAllRecent = $('rec_search').value.trim().length > 0;
   renderRecent();
 });
 
@@ -764,6 +784,13 @@ $('applyFilterBtn').addEventListener('click', ()=>{
   $('trendBackBtn').classList.add('hidden');
   runAnalysis();
 });
+let searchDebounceTimer = null;
+$('r_search').addEventListener('input', ()=>{
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(()=>{
+    if($('panel-analysis').classList.contains('active')) runAnalysis();
+  }, 350);
+});
 $('trendBackBtn').addEventListener('click', ()=>{
   if(trendDrillSnapshot){
     $('r_start').value = trendDrillSnapshot.start;
@@ -781,12 +808,14 @@ function getFiltered(){
   const cats = getCheckedCats('r_categoryChecks');
   const type = $('r_type').value;
   const status = $('r_status').value;
+  const keyword = $('r_search').value;
   return expenses.filter(r=>{
     if(start && r.date < start) return false;
     if(end && r.date > end) return false;
     if(cats.length && !cats.includes(r.category)) return false;
     if(type && r.type !== type) return false;
     if(status && (r.status||'待核') !== status) return false;
+    if(keyword.trim() && !matchesKeyword(r, keyword)) return false;
     return true;
   }).sort((a,b)=> a.date.localeCompare(b.date));
 }
