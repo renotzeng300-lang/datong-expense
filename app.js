@@ -784,6 +784,20 @@ $('applyFilterBtn').addEventListener('click', ()=>{
   $('trendBackBtn').classList.add('hidden');
   runAnalysis();
 });
+$('clearAllFilterBtn').addEventListener('click', ()=>{
+  $('r_start').value = '';
+  $('r_end').value = '';
+  $('r_type').value = '';
+  $('r_status').value = '';
+  $('r_search').value = '';
+  toggleAllChecks('r_categoryChecks', false);
+  document.querySelectorAll('#quickRange button').forEach(b=>b.classList.remove('active'));
+  document.querySelector('#quickRange [data-range="all"]').classList.add('active');
+  trendDrillSnapshot = null;
+  $('trendBackBtn').classList.add('hidden');
+  runAnalysis();
+  showToast("已清除全部篩選條件");
+});
 let searchDebounceTimer = null;
 $('r_search').addEventListener('input', ()=>{
   clearTimeout(searchDebounceTimer);
