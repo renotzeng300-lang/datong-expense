@@ -42,6 +42,10 @@ let catChart = null, trendChart = null;
 let unsubExpenses = null, unsubUsers = null;
 let highlightRecordId = null;  // 剛新增的那一筆，用來在列表閃一下＋自動捲動過去
 let highlightTimer = null;
+let lastCatEntries = [];   // 最近一次分析的類別小計（[類別, {amount,count}]）
+let lastTrendBuckets = []; // 最近一次分析的趨勢圖區塊資料
+let lastFilteredRows = []; // 最近一次分析套用篩選後的明細列
+let lastRangeLabelText = '';
 
 const ROLE_LABEL = { staff:"登打者", director:"理事長", admin:"主任", pending:"待設定" };
 const CHART_COLORS = ["#2c6e64","#c98a2c","#6a8caf","#b14e4e","#7a9b5c","#a17fb5","#cf9b5c","#4a8b8b","#8d6a4f","#5c7fa8","#a85c7f","#7f8d4f","#967fa8"];
@@ -921,9 +925,12 @@ function runAnalysis(){
   const rows = getFiltered();
   const start = $('r_start').value, end = $('r_end').value;
 
-  $('rangeLabel').textContent = (start||end)
+  const rangeLabelText = (start||end)
     ? `區間：${start || "最早"} ～ ${end || "最新"}　（${rocFromISO(start)||''} ${start?'～':''} ${rocFromISO(end)||''}）`
     : "目前顯示：全部紀錄";
+  $('rangeLabel').textContent = rangeLabelText;
+  lastRangeLabelText = rangeLabelText;
+  lastFilteredRows = rows;
 
   const total = rows.reduce((s,r)=>s+r.amount,0);
   const count = rows.length;
@@ -943,6 +950,7 @@ function runAnalysis(){
     catMap[r.category].count += 1;
   });
   const catEntries = Object.entries(catMap).sort((a,b)=>b[1].amount-a[1].amount);
+  lastCatEntries = catEntries;
   $('catTableBody').innerHTML = catEntries.length ? catEntries.map(([cat,v],i)=>`
     <tr>
       <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${CHART_COLORS[i%CHART_COLORS.length]};margin-right:6px;"></span>${escapeHtml(cat)}</td>
@@ -976,6 +984,7 @@ function runAnalysis(){
     trendMap[b.key].amount += r.amount;
   });
   const trendBuckets = Object.values(trendMap).sort((a,b)=> a.start.localeCompare(b.start));
+  lastTrendBuckets = trendBuckets;
 
   if(trendChart) trendChart.destroy();
   try{
@@ -1020,6 +1029,204 @@ function runAnalysis(){
       <td class="actions-cell">${editButtons(r)}${approveButtons(r)}</td>
     </tr>`).join("");
 }
+
+/* ---------------- Excel 匯出（含圖表） ---------------- */
+function chartCanvasToImage(canvasEl){
+  try{ return canvasEl.toDataURL('image/png'); }catch(e){ return null; }
+}
+async function buildBarChartImage(catEntries){
+  return new Promise(resolve=>{
+    const canvas = document.createElement('canvas');
+    canvas.width = 760; canvas.height = 420;
+    canvas.style.position = 'fixed'; canvas.style.left = '-9999px'; canvas.style.top = '0';
+    document.body.appendChild(canvas);
+    const chart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: catEntries.map(e=>e[0]),
+        datasets: [{ label:'支出金額', data: catEntries.map(e=>e[1].amount),
+          backgroundColor: catEntries.map((_,i)=>CHART_COLORS[i%CHART_COLORS.length]), borderRadius:4 }]
+      },
+      options: {
+        responsive:false, animation:false,
+        plugins:{ legend:{display:false}, title:{display:true, text:'各類別支出金額', font:{size:16}} },
+        scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } }, x:{ ticks:{ autoSkip:false, maxRotation:45, minRotation:0 } } }
+      }
+    });
+    requestAnimationFrame(()=>{
+      requestAnimationFrame(()=>{
+        const img = chartCanvasToImage(canvas);
+        chart.destroy();
+        canvas.remove();
+        resolve(img);
+      });
+    });
+  });
+}
+$('exportExcelBtn').addEventListener('click', async ()=>{
+  if(typeof ExcelJS === 'undefined'){ showToast("⚠ 圖表元件尚未載入完成，請稍後再試一次"); return; }
+  const btn = $('exportExcelBtn');
+  const originalText = btn.textContent;
+  btn.disabled = true; btn.textContent = '產生中…';
+  try{
+    runAnalysis(); // 確保圖表與明細跟畫面上目前的篩選條件（含關鍵字搜尋）完全一致
+    // 強制圖表立即完成繪製（不等成長動畫播完），避免擷取到畫到一半的畫面
+    if(catChart){ catChart.options.animation = false; catChart.update('none'); }
+    if(trendChart){ trendChart.options.animation = false; trendChart.update('none'); }
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+
+    const rows = lastFilteredRows;
+    if(!rows.length){ showToast("此區間沒有資料可匯出"); return; }
+
+    const pieImg = catChart ? chartCanvasToImage(catChart.canvas) : null;
+    const trendImg = trendChart ? chartCanvasToImage(trendChart.canvas) : null;
+    const barImg = await buildBarChartImage(lastCatEntries);
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = '大同發展中心經費支出管理平台';
+    wb.created = new Date();
+
+    const TEAL = 'FF1D4F48', TEAL_PALE = 'FFE3EEE9', WHITE='FFFFFFFF';
+    const thinBorder = { style:'thin', color:{argb:'FFCCCCCC'} };
+    const allBorders = { top:thinBorder, bottom:thinBorder, left:thinBorder, right:thinBorder };
+
+    /* ---- 工作表1：逐筆明細 ---- */
+    const ws1 = wb.addWorksheet('支出明細', { views:[{ state:'frozen', ySplit:5 }] });
+    ws1.mergeCells('A1:H1');
+    ws1.getCell('A1').value = '中華民國腦性麻痺協會　臺北市大同發展中心';
+    ws1.getCell('A1').font = { bold:true, size:14 };
+    ws1.getCell('A1').alignment = { horizontal:'center' };
+    ws1.mergeCells('A2:H2');
+    ws1.getCell('A2').value = '經費支出逐筆明細表';
+    ws1.getCell('A2').font = { bold:true, size:16, color:{argb:TEAL} };
+    ws1.getCell('A2').alignment = { horizontal:'center' };
+    ws1.mergeCells('A3:H3');
+    ws1.getCell('A3').value = lastRangeLabelText + `　｜　製表日期：${rocFromISO(todayISO())}　｜　共 ${rows.length} 筆`;
+    ws1.getCell('A3').font = { size:10, color:{argb:'FF52615E'} };
+    ws1.getCell('A3').alignment = { horizontal:'center' };
+    ws1.getRow(4).height = 4;
+
+    const headerRow = ws1.getRow(5);
+    headerRow.values = ['日期','民國日期','支出類別','摘要','支出金額','實支/預支','核示狀態','登打人','備註'];
+    headerRow.eachCell(c=>{
+      c.font = { bold:true, color:{argb:WHITE} };
+      c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL} };
+      c.alignment = { horizontal:'center', vertical:'middle' };
+      c.border = allBorders;
+    });
+    ws1.columns = [
+      {key:'date', width:13}, {key:'roc', width:14}, {key:'cat', width:14}, {key:'desc', width:30},
+      {key:'amount', width:13}, {key:'type', width:11}, {key:'status', width:12}, {key:'recorder', width:11}, {key:'note', width:24}
+    ];
+    rows.slice().reverse().forEach(r=>{
+      const row = ws1.addRow([r.date, rocFromISO(r.date), r.category, r.desc, r.amount, r.type, r.status||'待核', r.recorder||'', r.note||'']);
+      row.eachCell(c=>{ c.border = allBorders; c.alignment = { vertical:'middle', wrapText:true }; });
+      row.getCell(5).numFmt = '#,##0';
+      row.getCell(5).alignment = { horizontal:'right', vertical:'middle' };
+    });
+    const totalRowIdx = ws1.lastRow.number + 1;
+    ws1.mergeCells(`A${totalRowIdx}:D${totalRowIdx}`);
+    const totalLabelCell = ws1.getCell(`A${totalRowIdx}`);
+    totalLabelCell.value = '總計';
+    totalLabelCell.font = { bold:true };
+    totalLabelCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL_PALE} };
+    totalLabelCell.alignment = { horizontal:'center' };
+    const totalAmountCell = ws1.getCell(`E${totalRowIdx}`);
+    totalAmountCell.value = { formula: `SUM(E6:E${totalRowIdx-1})` };
+    totalAmountCell.numFmt = '#,##0';
+    totalAmountCell.font = { bold:true };
+    totalAmountCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL_PALE} };
+    totalAmountCell.alignment = { horizontal:'right' };
+    ['F','G','H','I'].forEach(col=>{
+      const c = ws1.getCell(`${col}${totalRowIdx}`);
+      c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL_PALE} };
+    });
+    ws1.getColumn(9).width = 24;
+
+    /* ---- 工作表2：類別小計 ---- */
+    const ws2 = wb.addWorksheet('類別小計');
+    ws2.mergeCells('A1:D1');
+    ws2.getCell('A1').value = '經費支出類別小計表';
+    ws2.getCell('A1').font = { bold:true, size:14, color:{argb:TEAL} };
+    ws2.getCell('A1').alignment = { horizontal:'center' };
+    ws2.mergeCells('A2:D2');
+    ws2.getCell('A2').value = lastRangeLabelText;
+    ws2.getCell('A2').font = { size:10, color:{argb:'FF52615E'} };
+    ws2.getCell('A2').alignment = { horizontal:'center' };
+    const catHeader = ws2.getRow(4);
+    catHeader.values = ['支出類別','金額（元）','占比','筆數'];
+    catHeader.eachCell(c=>{
+      c.font = { bold:true, color:{argb:WHITE} };
+      c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL} };
+      c.alignment = { horizontal:'center' };
+      c.border = allBorders;
+    });
+    ws2.columns = [{key:'cat',width:18},{key:'amount',width:14},{key:'pct',width:10},{key:'count',width:10}];
+    const catTotal = lastCatEntries.reduce((s,e)=>s+e[1].amount,0);
+    lastCatEntries.forEach(([cat,v])=>{
+      const row = ws2.addRow([cat, v.amount, catTotal ? v.amount/catTotal : 0, v.count]);
+      row.eachCell(c=>{ c.border = allBorders; });
+      row.getCell(2).numFmt = '#,##0';
+      row.getCell(2).alignment = { horizontal:'right' };
+      row.getCell(3).numFmt = '0.0%';
+      row.getCell(3).alignment = { horizontal:'right' };
+      row.getCell(4).alignment = { horizontal:'right' };
+    });
+    const catTotalIdx = ws2.lastRow.number + 1;
+    ws2.getCell(`A${catTotalIdx}`).value = '總計';
+    ws2.getCell(`A${catTotalIdx}`).font = { bold:true };
+    ws2.getCell(`B${catTotalIdx}`).value = { formula:`SUM(B5:B${catTotalIdx-1})` };
+    ws2.getCell(`B${catTotalIdx}`).numFmt = '#,##0';
+    ws2.getCell(`B${catTotalIdx}`).font = { bold:true };
+    ws2.getCell(`B${catTotalIdx}`).alignment = { horizontal:'right' };
+    ws2.getCell(`C${catTotalIdx}`).value = 1;
+    ws2.getCell(`C${catTotalIdx}`).numFmt = '0.0%';
+    ws2.getCell(`C${catTotalIdx}`).font = { bold:true };
+    ws2.getRow(catTotalIdx).eachCell(c=>{ c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL_PALE} }; });
+
+    /* ---- 工作表3：分析圖表 ---- */
+    const ws3 = wb.addWorksheet('分析圖表');
+    ws3.getColumn(1).width = 4;
+    let cursorRow = 2;
+    ws3.getCell(`B${cursorRow}`).value = '經費支出分析圖表';
+    ws3.getCell(`B${cursorRow}`).font = { bold:true, size:14, color:{argb:TEAL} };
+    cursorRow += 1;
+    ws3.getCell(`B${cursorRow}`).value = lastRangeLabelText;
+    ws3.getCell(`B${cursorRow}`).font = { size:10, color:{argb:'FF52615E'} };
+    cursorRow += 2;
+
+    function placeChartImage(title, dataUrl, rowStart){
+      ws3.getCell(`B${rowStart}`).value = title;
+      ws3.getCell(`B${rowStart}`).font = { bold:true, size:12 };
+      if(!dataUrl) {
+        ws3.getCell(`B${rowStart+1}`).value = '（圖表載入失敗，請參考其他工作表的數字資料）';
+        return rowStart + 3;
+      }
+      const imgId = wb.addImage({ base64: dataUrl, extension: 'png' });
+      ws3.addImage(imgId, { tl:{ col:1, row:rowStart }, ext:{ width:620, height:340 } });
+      return rowStart + 19;
+    }
+    cursorRow = placeChartImage('① 圓餅圖：各類別支出占比', pieImg, cursorRow);
+    cursorRow = placeChartImage('② 直條圖：各類別支出金額', barImg, cursorRow);
+    cursorRow = placeChartImage(`③ 趨勢圖：支出趨勢（${$('trendUnit').textContent.replace(/（.*）/,'')}）`, trendImg, cursorRow);
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const s = $('r_start').value || "全部";
+    const e = $('r_end').value || "全部";
+    a.href = url;
+    a.download = `大同發展中心支出報表_${s}_${e}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast("Excel 報表已匯出（含明細、類別小計、分析圖表）");
+  }catch(err){
+    showToast("⚠ Excel 匯出失敗：" + err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = originalText;
+  }
+});
 
 /* ---------------- CSV 匯出 ---------------- */
 $('exportCsvBtn').addEventListener('click', ()=>{
