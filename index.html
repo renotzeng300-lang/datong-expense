@@ -73,6 +73,7 @@
     <button class="tab-btn" data-tab="analysis">統計分析<span class="tab-badge hidden" id="analysisTabBadge">0</span></button>
     <button class="tab-btn hidden" data-tab="categories" id="categoriesTabBtn">類別管理</button>
     <button class="tab-btn hidden" data-tab="import" id="importTabBtn">資料匯入</button>
+    <button class="tab-btn hidden" data-tab="trash" id="trashTabBtn">🗑 垃圾桶<span class="tab-badge hidden" id="trashTabBadge">0</span></button>
     <button class="tab-btn hidden" data-tab="users" id="usersTabBtn">使用者管理</button>
   </nav>
 
@@ -379,6 +380,24 @@
         <div class="btn-row">
           <button class="btn btn-primary btn-sm" id="importConfirmBtn">確認匯入到資料庫</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: 垃圾桶 ============ -->
+  <div class="panel" id="panel-trash">
+    <div class="card">
+      <h2>🗑 垃圾桶 <span class="tag" id="trashCount"></span></h2>
+      <p class="note">刪除的支出紀錄會先放在這裡，可以隨時點「復原」救回；若確定不需要了，可以「永久刪除」。垃圾桶內的紀錄不會出現在登打清單與統計分析中。逾 30 天未復原的紀錄會自動永久清除。</p>
+      <div id="trashEmpty" class="empty" style="display:none;">垃圾桶目前是空的</div>
+      <div class="table-scroll">
+        <table id="trashTable">
+          <thead><tr><th>日期</th><th>類別</th><th>摘要</th><th class="amt">金額</th><th>刪除人</th><th>操作</th></tr></thead>
+          <tbody id="trashBody"></tbody>
+        </table>
+      </div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-danger btn-sm" id="emptyTrashBtn">清空垃圾桶（永久刪除全部）</button>
       </div>
     </div>
   </div>

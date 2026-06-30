@@ -29,7 +29,8 @@ const DEFAULT_CATEGORIES = [
 ];
 let compareRanges = []; // 跨期比較用的自訂時間區間清單
 let categories = DEFAULT_CATEGORIES.slice();
-let expenses = [];      // 從 Firestore 即時同步
+let expenses = [];      // 從 Firestore 即時同步（不含已軟刪除）
+let trashedExpenses = []; // 垃圾桶（軟刪除的紀錄）
 let allUsers = [];      // users 集合（僅 admin 會用到）
 let currentUser = null; // { uid, email, name, role }
 let editingId = null;
@@ -271,8 +272,10 @@ function applyRoleUI(){
   $('usersTabBtn').classList.toggle('hidden', !isAdmin);
   $('categoriesTabBtn').classList.toggle('hidden', !isStaffOrAdmin);
   $('importTabBtn').classList.toggle('hidden', !isStaffOrAdmin);
+  $('trashTabBtn').classList.toggle('hidden', !isStaffOrAdmin);
 
   updatePendingReviewUI();
+  renderTrash();
 }
 
 /* ---------------- Tab 切換 ---------------- */
@@ -305,9 +308,12 @@ function startListeners(){
   // 支出紀錄（即時）
   const q = query(collection(db, 'expenses'), orderBy('date', 'desc'));
   unsubExpenses = onSnapshot(q, (snap)=>{
-    expenses = snap.docs.map(d=>({ id: d.id, ...d.data() }));
+    const all = snap.docs.map(d=>({ id: d.id, ...d.data() }));
+    expenses = all.filter(r => !r.deletedAt);
+    trashedExpenses = all.filter(r => r.deletedAt);
     renderRecent();
     renderCategoryOptions();
+    renderTrash();
     updatePendingReviewUI();
     if($('panel-analysis').classList.contains('active')) runAnalysis();
   }, (err)=>{
@@ -386,6 +392,56 @@ $('addCatBtn').addEventListener('click', async ()=>{
     showToast("已新增類別「"+name.trim()+"」");
   }
 });
+
+const TRASH_RETENTION_DAYS = 30;
+const purgeAttempted = new Set(); // 避免同一筆重複觸發永久刪除
+function renderTrash(){
+  const canSeeTrash = currentUser && (currentUser.role === 'staff' || currentUser.role === 'admin');
+  const badge = $('trashTabBadge');
+  if(!canSeeTrash){
+    if(badge) badge.classList.add('hidden');
+    return;
+  }
+  const n = trashedExpenses.length;
+  if(badge){
+    badge.classList.toggle('hidden', n === 0);
+    badge.textContent = n;
+  }
+  // 超過保留天數的紀錄，自動永久清除（盡力而為，僅在有人開啟本系統時觸發）
+  const cutoff = Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  trashedExpenses.forEach(r=>{
+    const delAt = toMillis(r.deletedAt);
+    if(delAt && delAt < cutoff && !purgeAttempted.has(r.id)){
+      purgeAttempted.add(r.id);
+      deleteDoc(doc(db,'expenses', r.id)).catch(()=>{});
+    }
+  });
+  const el = $('trashBody');
+  if(!el) return;
+  $('trashCount').textContent = n ? `共 ${n} 筆` : '';
+  $('trashEmpty').style.display = n ? 'none' : 'block';
+  const sorted = trashedExpenses.slice().sort((a,b)=> toMillis(b.deletedAt) - toMillis(a.deletedAt));
+  el.innerHTML = sorted.map(r=>{
+    const delAt = toMillis(r.deletedAt);
+    const daysLeft = delAt ? Math.max(0, TRASH_RETENTION_DAYS - Math.floor((Date.now()-delAt)/86400000)) : null;
+    const expiryHint = daysLeft !== null ? `<div class="note" style="margin-top:2px;">${daysLeft>0 ? `${daysLeft} 天後自動清除` : '即將自動清除'}</div>` : '';
+    return `
+    <tr>
+      <td>${r.date}</td>
+      <td><span class="pill">${escapeHtml(r.category)}</span></td>
+      <td>${escapeHtml(r.desc)}${expiryHint}</td>
+      <td class="amt">${fmtMoney(r.amount)}</td>
+      <td>${escapeHtml(r.deletedBy||"")}</td>
+      <td class="actions-cell">
+        <div class="action-row">
+          <button class="btn btn-primary btn-sm" onclick="restoreEntry('${r.id}')">復原</button>
+          <button class="btn btn-danger btn-sm" onclick="permanentlyDeleteEntry('${r.id}')">永久刪除</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+}
+$('emptyTrashBtn').addEventListener('click', ()=>emptyTrash());
 
 function renderCategoryManager(){
   const el = $('categoriesManagerBody');
@@ -508,12 +564,49 @@ window.startEdit = function(id){
 };
 
 window.deleteEntry = async function(id){
-  if(!confirm("確定要刪除這筆支出紀錄嗎？此操作無法復原。")) return;
+  if(!confirm("確定要刪除這筆支出紀錄嗎？\n刪除後會移到垃圾桶，30天內隨時可以復原。")) return;
   try{
-    await deleteDoc(doc(db,'expenses', id));
-    showToast("已刪除");
+    await updateDoc(doc(db,'expenses', id), {
+      deletedAt: serverTimestamp(),
+      deletedBy: currentUser.name,
+      deletedByUid: currentUser.uid
+    });
+    showToast("已移至垃圾桶，30天內可復原");
   }catch(err){
     showToast("⚠ 刪除失敗：" + err.message);
+  }
+};
+window.restoreEntry = async function(id){
+  try{
+    await updateDoc(doc(db,'expenses', id), {
+      deletedAt: null, deletedBy: null, deletedByUid: null
+    });
+    showToast("已復原該筆紀錄");
+  }catch(err){
+    showToast("⚠ 復原失敗：" + err.message);
+  }
+};
+window.permanentlyDeleteEntry = async function(id){
+  const rec = trashedExpenses.find(x=>x.id===id);
+  const label = rec ? `${rec.date}「${rec.desc}」` : '這筆紀錄';
+  if(!confirm(`確定要永久刪除${label}嗎？\n此操作無法復原，請特別小心。`)) return;
+  try{
+    await deleteDoc(doc(db,'expenses', id));
+    showToast("已永久刪除");
+  }catch(err){
+    showToast("⚠ 刪除失敗：" + err.message);
+  }
+};
+window.emptyTrash = async function(){
+  if(!trashedExpenses.length){ showToast("垃圾桶目前是空的"); return; }
+  if(!confirm(`垃圾桶內共有 ${trashedExpenses.length} 筆紀錄，確定要全部永久刪除嗎？\n此操作無法復原，請特別小心。`)) return;
+  try{
+    for(const r of trashedExpenses){
+      await deleteDoc(doc(db,'expenses', r.id));
+    }
+    showToast("垃圾桶已清空");
+  }catch(err){
+    showToast("⚠ 清空失敗：" + err.message);
   }
 };
 
