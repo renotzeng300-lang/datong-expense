@@ -1034,25 +1034,13 @@ function runAnalysis(){
 function chartCanvasToImage(canvasEl){
   try{ return canvasEl.toDataURL('image/png'); }catch(e){ return null; }
 }
-async function buildBarChartImage(catEntries){
+function buildOffscreenChartImage(config, w, h){
   return new Promise(resolve=>{
     const canvas = document.createElement('canvas');
-    canvas.width = 760; canvas.height = 420;
+    canvas.width = w; canvas.height = h;
     canvas.style.position = 'fixed'; canvas.style.left = '-9999px'; canvas.style.top = '0';
     document.body.appendChild(canvas);
-    const chart = new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels: catEntries.map(e=>e[0]),
-        datasets: [{ label:'支出金額', data: catEntries.map(e=>e[1].amount),
-          backgroundColor: catEntries.map((_,i)=>CHART_COLORS[i%CHART_COLORS.length]), borderRadius:4 }]
-      },
-      options: {
-        responsive:false, animation:false,
-        plugins:{ legend:{display:false}, title:{display:true, text:'各類別支出金額', font:{size:16}} },
-        scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } }, x:{ ticks:{ autoSkip:false, maxRotation:45, minRotation:0 } } }
-      }
-    });
+    const chart = new Chart(canvas, config);
     requestAnimationFrame(()=>{
       requestAnimationFrame(()=>{
         const img = chartCanvasToImage(canvas);
@@ -1063,24 +1051,71 @@ async function buildBarChartImage(catEntries){
     });
   });
 }
+function buildPieChartImage(catEntries){
+  const total = catEntries.reduce((s,e)=>s+e[1].amount,0);
+  return buildOffscreenChartImage({
+    type: 'doughnut',
+    data: {
+      labels: catEntries.map(e=>e[0]),
+      datasets: [{ data: catEntries.map(e=>e[1].amount),
+        backgroundColor: catEntries.map((_,i)=>CHART_COLORS[i%CHART_COLORS.length]), borderWidth:2, borderColor:'#fff' }]
+    },
+    options: {
+      responsive:false, animation:false,
+      layout:{ padding: 4 },
+      plugins:{
+        legend:{ position:'right', labels:{ boxWidth:10, padding:6, font:{size:10} } },
+        title:{ display:true, text:'各類別支出占比', font:{size:16} }
+      }
+    }
+  }, 900, Math.max(480, catEntries.length * 19 + 60));
+}
+function buildBarChartImage(catEntries){
+  return buildOffscreenChartImage({
+    type: 'bar',
+    data: {
+      labels: catEntries.map(e=>e[0]),
+      datasets: [{ label:'支出金額', data: catEntries.map(e=>e[1].amount),
+        backgroundColor: catEntries.map((_,i)=>CHART_COLORS[i%CHART_COLORS.length]), borderRadius:4 }]
+    },
+    options: {
+      responsive:false, animation:false,
+      plugins:{ legend:{display:false}, title:{display:true, text:'各類別支出金額', font:{size:16}} },
+      scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } }, x:{ ticks:{ autoSkip:false, maxRotation:45, minRotation:0 } } }
+    }
+  }, 760, 420);
+}
+function buildTrendChartImage(trendBuckets){
+  return buildOffscreenChartImage({
+    type: 'bar',
+    data: {
+      labels: trendBuckets.map(b=>b.label),
+      datasets: [{ label:'支出金額', data: trendBuckets.map(b=>b.amount), backgroundColor:'#2c6e64', borderRadius:4 }]
+    },
+    options: {
+      responsive:false, animation:false,
+      plugins:{ legend:{display:false}, title:{display:true, text:'支出趨勢', font:{size:16}} },
+      scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } } }
+    }
+  }, 760, 380);
+}
 $('exportExcelBtn').addEventListener('click', async ()=>{
   if(typeof ExcelJS === 'undefined'){ showToast("⚠ 圖表元件尚未載入完成，請稍後再試一次"); return; }
   const btn = $('exportExcelBtn');
   const originalText = btn.textContent;
   btn.disabled = true; btn.textContent = '產生中…';
   try{
-    runAnalysis(); // 確保圖表與明細跟畫面上目前的篩選條件（含關鍵字搜尋）完全一致
-    // 強制圖表立即完成繪製（不等成長動畫播完），避免擷取到畫到一半的畫面
-    if(catChart){ catChart.options.animation = false; catChart.update('none'); }
-    if(trendChart){ trendChart.options.animation = false; trendChart.update('none'); }
-    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    runAnalysis(); // 確保資料跟畫面上目前的篩選條件（含關鍵字搜尋）完全一致
 
     const rows = lastFilteredRows;
     if(!rows.length){ showToast("此區間沒有資料可匯出"); return; }
 
-    const pieImg = catChart ? chartCanvasToImage(catChart.canvas) : null;
-    const trendImg = trendChart ? chartCanvasToImage(trendChart.canvas) : null;
-    const barImg = await buildBarChartImage(lastCatEntries);
+    // 三張圖表都在背景另外建立、從一開始就關閉動畫，避免擷取到動畫播放到一半的畫面
+    const [pieImg, barImg, trendImg] = await Promise.all([
+      buildPieChartImage(lastCatEntries),
+      buildBarChartImage(lastCatEntries),
+      buildTrendChartImage(lastTrendBuckets)
+    ]);
 
     const wb = new ExcelJS.Workbook();
     wb.creator = '大同發展中心經費支出管理平台';
@@ -1195,7 +1230,7 @@ $('exportExcelBtn').addEventListener('click', async ()=>{
     ws3.getCell(`B${cursorRow}`).font = { size:10, color:{argb:'FF52615E'} };
     cursorRow += 2;
 
-    function placeChartImage(title, dataUrl, rowStart){
+    function placeChartImage(title, dataUrl, rowStart, width, height){
       ws3.getCell(`B${rowStart}`).value = title;
       ws3.getCell(`B${rowStart}`).font = { bold:true, size:12 };
       if(!dataUrl) {
@@ -1203,12 +1238,13 @@ $('exportExcelBtn').addEventListener('click', async ()=>{
         return rowStart + 3;
       }
       const imgId = wb.addImage({ base64: dataUrl, extension: 'png' });
-      ws3.addImage(imgId, { tl:{ col:1, row:rowStart }, ext:{ width:620, height:340 } });
-      return rowStart + 19;
+      ws3.addImage(imgId, { tl:{ col:1, row:rowStart }, ext:{ width, height } });
+      return rowStart + Math.ceil(height / 20) + 3;
     }
-    cursorRow = placeChartImage('① 圓餅圖：各類別支出占比', pieImg, cursorRow);
-    cursorRow = placeChartImage('② 直條圖：各類別支出金額', barImg, cursorRow);
-    cursorRow = placeChartImage(`③ 趨勢圖：支出趨勢（${$('trendUnit').textContent.replace(/（.*）/,'')}）`, trendImg, cursorRow);
+    const pieDisplayH = Math.round(660 * Math.max(480, lastCatEntries.length*19+60) / 900);
+    cursorRow = placeChartImage('① 圓餅圖：各類別支出占比', pieImg, cursorRow, 660, pieDisplayH);
+    cursorRow = placeChartImage('② 直條圖：各類別支出金額', barImg, cursorRow, 570, 315);
+    cursorRow = placeChartImage(`③ 趨勢圖：支出趨勢（${$('trendUnit').textContent.replace(/（.*）/,'')}）`, trendImg, cursorRow, 570, 285);
 
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
