@@ -573,8 +573,22 @@ $('entryForm').addEventListener('submit', async (e)=>{
     if(editingId){
       const proceed = await guardConflict(editingId, editingOriginalSnapshot, '儲存變更');
       if(!proceed){ showToast("已取消儲存，請重新整理確認最新內容"); return; }
-      await updateDoc(doc(db,'expenses', editingId), { ...rec, updatedAt: serverTimestamp() });
-      showToast("已更新該筆紀錄");
+      const wasRejected = editingOriginalSnapshot?.status === '已退件';
+      const updateData = { ...rec, updatedAt: serverTimestamp() };
+      if(wasRejected){
+        updateData.status = '待核';
+        updateData.statusBy = null;
+        updateData.statusAt = serverTimestamp();
+        updateData.resubmittedAt = serverTimestamp();
+        updateData.resubmittedBy = currentUser.name;
+      }
+      await updateDoc(doc(db,'expenses', editingId), updateData);
+      if(wasRejected){
+        showToast("已重新送出審核，等待理事長/主任核可");
+        notifyAdminsNewEntry({ ...rec, desc: `【重新送出】${rec.desc}` });
+      } else {
+        showToast("已更新該筆紀錄");
+      }
     }else{
       const docRef = await addDoc(collection(db,'expenses'), { ...rec, status:'待核', createdAt: serverTimestamp() });
       showToast("已新增一筆支出紀錄，請於下方列表確認內容無誤");
@@ -624,11 +638,31 @@ window.startEdit = function(id){
   document.querySelector(`input[name=f_type][value="${rec.type}"]`).checked = true;
   $('f_desc').value = rec.desc;
   $('f_note').value = rec.note || "";
-  $('formTitle').innerHTML = '編輯支出紀錄 <span class="tag">編輯中</span>';
-  $('submitBtn').textContent = '儲存變更';
+
+  const isRejected = rec.status === '已退件';
+  if(isRejected){
+    // 取得最近一筆審核備註
+    let rejectNote = '';
+    const notes = Array.isArray(rec.directorNotes) ? rec.directorNotes : [];
+    if(notes.length) rejectNote = notes[notes.length-1].text;
+    else if(rec.directorNote) rejectNote = rec.directorNote;
+    $('formTitle').innerHTML = '修改退件紀錄並重新送出 <span class="tag tag-rejected">已退件</span>';
+    $('submitBtn').textContent = '修改完成，重新送出審核';
+    $('editBannerHolder').innerHTML =
+      `<div class="edit-banner edit-banner-rejected">
+        <div class="edit-banner-main">
+          <b>📋 這筆紀錄已被退件</b>，請修改後按下方按鈕重新送出審核
+          ${rejectNote ? `<div class="edit-banner-note">退件原因：${escapeHtml(rejectNote)}</div>` : ''}
+        </div>
+        <button class="small-link" onclick="document.getElementById('cancelEditBtn').click()">取消</button>
+      </div>`;
+  } else {
+    $('formTitle').innerHTML = '編輯支出紀錄 <span class="tag">編輯中</span>';
+    $('submitBtn').textContent = '儲存變更';
+    $('editBannerHolder').innerHTML =
+      `<div class="edit-banner"><span>正在編輯 ${rec.date}「${escapeHtml(rec.desc)}」</span><button class="small-link" onclick="document.getElementById('cancelEditBtn').click()">取消</button></div>`;
+  }
   $('cancelEditBtn').style.display='inline-block';
-  $('editBannerHolder').innerHTML =
-    `<div class="edit-banner"><span>正在編輯 ${rec.date}「${escapeHtml(rec.desc)}」</span><button class="small-link" onclick="document.getElementById('cancelEditBtn').click()">取消</button></div>`;
   switchTab('entry');
   window.scrollTo({top:0,behavior:'smooth'});
 };
@@ -712,11 +746,13 @@ function statusBadge(status){
 function approveButtons(r){
   const canApprove = currentUser.role === 'director' || currentUser.role === 'admin';
   if(!canApprove) return '';
-  return `<div class="action-row">
-            <button class="btn btn-ghost btn-sm" onclick="setStatus('${r.id}','已核可')">核可</button>
-            <button class="btn btn-amber btn-sm" onclick="setStatus('${r.id}','已退件')">退件</button>
+  const isRejected = r.status === '已退件';
+  const isApproved = r.status === '已核可';
+  return `<div class="action-row approve-group">
+            <button class="btn btn-primary btn-sm" onclick="setStatus('${r.id}','已核可')">✓ 核可</button>
+            ${isApproved ? '' : `<button class="btn btn-amber btn-sm" onclick="setStatus('${r.id}','已退件')">✕ 退件</button>`}
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="addDirectorNote('${r.id}')">＋審核備註</button>`;
+          <button class="btn btn-ghost btn-sm" style="margin-top:4px;" onclick="addDirectorNote('${r.id}')">＋審核備註</button>`;
 }
 function fmtNoteTime(ts){
   if(!ts) return '';
@@ -759,8 +795,12 @@ window.addDirectorNote = async function(id){
 function editButtons(r){
   const canEdit = currentUser.role === 'staff' || currentUser.role === 'admin';
   if(!canEdit) return '';
+  const isRejected = r.status === '已退件';
+  const editBtn = isRejected
+    ? `<button class="btn btn-resubmit btn-sm" onclick="startEdit('${r.id}')">✎ 修改並重新送出</button>`
+    : `<button class="btn btn-ghost btn-sm" onclick="startEdit('${r.id}')">編輯</button>`;
   return `<div class="action-row">
-            <button class="btn btn-ghost btn-sm" onclick="startEdit('${r.id}')">編輯</button>
+            ${editBtn}
             <button class="btn btn-danger btn-sm" onclick="deleteEntry('${r.id}')">刪除</button>
           </div>`;
 }
