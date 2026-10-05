@@ -746,14 +746,32 @@ function statusBadge(status){
 function approveButtons(r){
   const canApprove = currentUser.role === 'director' || currentUser.role === 'admin';
   if(!canApprove) return '';
-  const isRejected = r.status === '已退件';
   const isApproved = r.status === '已核可';
+  const isReviewed = r.status && r.status !== '待核';
+  const recallBtn = isReviewed
+    ? `<button class="btn btn-ghost btn-sm recall-btn" style="margin-top:4px;" onclick="recallReview('${r.id}')">↩ 回收審核</button>`
+    : '';
   return `<div class="action-row approve-group">
             <button class="btn btn-primary btn-sm" onclick="setStatus('${r.id}','已核可')">✓ 核可</button>
             ${isApproved ? '' : `<button class="btn btn-amber btn-sm" onclick="setStatus('${r.id}','已退件')">✕ 退件</button>`}
           </div>
+          ${recallBtn}
           <button class="btn btn-ghost btn-sm" style="margin-top:4px;" onclick="addDirectorNote('${r.id}')">＋審核備註</button>`;
 }
+
+window.recallReview = async function(id){
+  if(!confirm('確定要將此筆支出回收為「待核」狀態，重新進行審核嗎？')) return;
+  const rec = expenses.find(x=>x.id===id);
+  try{
+    await updateDoc(doc(db,'expenses',id),{
+      status:'待核', statusBy: currentUser.name, statusAt: serverTimestamp()
+    });
+    showToast('已回收審核，此筆支出狀態重設為「待核」');
+    if(rec) notifyRecorderReview(rec,'已回收審核（重設為待核）', null);
+  }catch(err){
+    showToast('⚠ 操作失敗：'+err.message);
+  }
+};
 function fmtNoteTime(ts){
   if(!ts) return '';
   const d = new Date(ts);
