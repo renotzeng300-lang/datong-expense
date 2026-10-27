@@ -1401,7 +1401,9 @@ $('exportCsvBtn').addEventListener('click', ()=>{
     lines.push(vals.join(","));
   });
   const total = rows.reduce((s,r)=>s+r.amount,0);
-  lines.push(`"小計","","","",${total},"","","",""`);
+  // 12 欄：項次,日期,民國日期,類別,摘要,規格/單位,數量,支出金額,實支/預支,核示,登打人,備註
+  // 金額在第 8 欄 → 前 7 欄空白（項次=小計，其餘留空）後放金額，後 4 欄留空
+  lines.push(`"小計","","","","","","",${total},"","","",""`);
   const blob = new Blob(["\uFEFF"+lines.join("\n")], {type:"text/csv;charset=utf-8;"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
