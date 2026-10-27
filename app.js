@@ -1393,8 +1393,26 @@ $('exportExcelBtn').addEventListener('click', async ()=>{
 $('exportCsvBtn').addEventListener('click', ()=>{
   const rows = getFiltered();
   if(!rows.length){ showToast("此區間沒有資料可匯出"); return; }
+
+  // 日期起迄（ROC 短格式，如 115.10.14）
+  const rocShortCSV = iso => {
+    if(!iso) return '';
+    const [y,m,d] = iso.split('-').map(Number);
+    return `${y-1911}.${String(m).padStart(2,'0')}.${String(d).padStart(2,'0')}`;
+  };
+  const sortedDates = rows.map(r=>r.date).filter(Boolean).sort();
+  const ds = sortedDates[0] || $('r_start').value || '';
+  const de = sortedDates[sortedDates.length-1] || $('r_end').value || '';
+  const dateRange = (ds && de) ? `${rocShortCSV(ds)} ～ ${rocShortCSV(de)}` : '';
+
+  const lines = [
+    '"大同發展中心支出申請"',
+    `"${dateRange}"`,
+    `"製表日期：${rocFromISO(todayISO())}　共 ${rows.length} 筆"`,
+    ''  // 空白列，隔開標題與表頭
+  ];
   const header = ["項次","日期","民國日期","支出類別","摘要","規格/單位","數量","支出金額","實支/預支","主管核示","登打人","備註"];
-  const lines = [header.join(",")];
+  lines.push(header.join(","));
   rows.forEach((r, idx)=>{
     const vals = [idx+1, r.date, rocFromISO(r.date), r.category, r.desc, r.qty||'', r.unit||'', r.amount, r.type, r.status||'待核', r.recorder||"", (r.note||"").replace(/\n/g," ")]
       .map(v => `"${String(v).replace(/"/g,'""')}"`);
