@@ -562,6 +562,8 @@ $('entryForm').addEventListener('submit', async (e)=>{
     date: $('f_date').value,
     category,
     desc: $('f_desc').value.trim(),
+    qty: $('f_qty').value.trim() || '',
+    unit: $('f_unit').value.trim() || '',
     amount: Number($('f_amount').value) || 0,
     type: document.querySelector('input[name=f_type]:checked').value,
     recorder: $('f_recorder').value.trim() || currentUser.name,
@@ -635,6 +637,8 @@ window.startEdit = function(id){
     $('f_customCat').value = rec.category;
   }
   $('f_amount').value = rec.amount;
+  $('f_qty').value = rec.qty || '';
+  $('f_unit').value = rec.unit || '';
   document.querySelector(`input[name=f_type][value="${rec.type}"]`).checked = true;
   $('f_desc').value = rec.desc;
   $('f_note').value = rec.note || "";
@@ -844,6 +848,8 @@ function renderRecent(){
       <td>${r.date}</td>
       <td><span class="pill">${escapeHtml(r.category)}</span></td>
       <td>${escapeHtml(r.desc)}${directorNoteDisplay(r)}</td>
+      <td class="amt" style="font-size:13px;">${escapeHtml(r.qty||'')}</td>
+      <td style="font-size:13px;">${escapeHtml(r.unit||'')}</td>
       <td class="amt">${fmtMoney(r.amount)}</td>
       <td>${escapeHtml(r.type)}</td>
       <td>${statusBadge(r.status)}</td>
@@ -1079,6 +1085,8 @@ function runAnalysis(){
       <td>${r.date}</td>
       <td><span class="pill">${escapeHtml(r.category)}</span></td>
       <td>${escapeHtml(r.desc)}</td>
+      <td class="amt" style="font-size:13px;">${escapeHtml(r.qty||'')}</td>
+      <td style="font-size:13px;">${escapeHtml(r.unit||'')}</td>
       <td class="amt">${fmtMoney(r.amount)}</td>
       <td>${escapeHtml(r.type)}</td>
       <td>${statusBadge(r.status)}</td>
@@ -1185,22 +1193,23 @@ $('exportExcelBtn').addEventListener('click', async ()=>{
 
     /* ---- 工作表1：逐筆明細 ---- */
     const ws1 = wb.addWorksheet('支出明細', { views:[{ state:'frozen', ySplit:5 }] });
-    ws1.mergeCells('A1:H1');
+    ws1.mergeCells('A1:L1');
     ws1.getCell('A1').value = '中華民國腦性麻痺協會　臺北市大同發展中心';
     ws1.getCell('A1').font = { bold:true, size:14 };
     ws1.getCell('A1').alignment = { horizontal:'center' };
-    ws1.mergeCells('A2:H2');
+    ws1.mergeCells('A2:L2');
     ws1.getCell('A2').value = '經費支出逐筆明細表';
     ws1.getCell('A2').font = { bold:true, size:16, color:{argb:TEAL} };
     ws1.getCell('A2').alignment = { horizontal:'center' };
-    ws1.mergeCells('A3:H3');
+    ws1.mergeCells('A3:L3');
     ws1.getCell('A3').value = lastRangeLabelText + `　｜　製表日期：${rocFromISO(todayISO())}　｜　共 ${rows.length} 筆`;
     ws1.getCell('A3').font = { size:10, color:{argb:'FF52615E'} };
     ws1.getCell('A3').alignment = { horizontal:'center' };
     ws1.getRow(4).height = 4;
 
     const headerRow = ws1.getRow(5);
-    headerRow.values = ['日期','民國日期','支出類別','摘要','支出金額','實支/預支','核示狀態','登打人','備註'];
+    // 欄位順序對應協會申請單格式：項次/日期/民國日期/類別/摘要/規格單位/數量/金額/性質/核示/登打人/備註
+    headerRow.values = ['項次','日期','民國日期','支出類別','摘要','規格/單位','數量','支出金額','實支/預支','核示狀態','登打人','備註'];
     headerRow.eachCell(c=>{
       c.font = { bold:true, color:{argb:WHITE} };
       c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL} };
@@ -1208,33 +1217,39 @@ $('exportExcelBtn').addEventListener('click', async ()=>{
       c.border = allBorders;
     });
     ws1.columns = [
-      {key:'date', width:13}, {key:'roc', width:14}, {key:'cat', width:14}, {key:'desc', width:30},
-      {key:'amount', width:13}, {key:'type', width:11}, {key:'status', width:12}, {key:'recorder', width:11}, {key:'note', width:24}
+      {key:'seq',   width:7},  {key:'date', width:13}, {key:'roc',  width:14},
+      {key:'cat',   width:14}, {key:'desc', width:30},
+      {key:'qty',   width:10}, {key:'unit', width:10},
+      {key:'amount',width:13}, {key:'type', width:11},
+      {key:'status',width:12}, {key:'recorder', width:11}, {key:'note', width:24}
     ];
-    rows.slice().reverse().forEach(r=>{
-      const row = ws1.addRow([r.date, rocFromISO(r.date), r.category, r.desc, r.amount, r.type, r.status||'待核', r.recorder||'', r.note||'']);
+    rows.slice().reverse().forEach((r, idx)=>{
+      const row = ws1.addRow([
+        idx+1, r.date, rocFromISO(r.date), r.category, r.desc,
+        r.qty||'', r.unit||'',
+        r.amount, r.type, r.status||'待核', r.recorder||'', r.note||''
+      ]);
       row.eachCell(c=>{ c.border = allBorders; c.alignment = { vertical:'middle', wrapText:true }; });
-      row.getCell(5).numFmt = '#,##0';
-      row.getCell(5).alignment = { horizontal:'right', vertical:'middle' };
+      row.getCell(8).numFmt = '#,##0';
+      row.getCell(8).alignment = { horizontal:'right', vertical:'middle' };
     });
     const totalRowIdx = ws1.lastRow.number + 1;
-    ws1.mergeCells(`A${totalRowIdx}:D${totalRowIdx}`);
+    ws1.mergeCells(`A${totalRowIdx}:E${totalRowIdx}`);
     const totalLabelCell = ws1.getCell(`A${totalRowIdx}`);
-    totalLabelCell.value = '總計';
+    totalLabelCell.value = '小計';
     totalLabelCell.font = { bold:true };
     totalLabelCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL_PALE} };
     totalLabelCell.alignment = { horizontal:'center' };
-    const totalAmountCell = ws1.getCell(`E${totalRowIdx}`);
-    totalAmountCell.value = { formula: `SUM(E6:E${totalRowIdx-1})` };
+    const totalAmountCell = ws1.getCell(`H${totalRowIdx}`);
+    totalAmountCell.value = { formula: `SUM(H6:H${totalRowIdx-1})` };
     totalAmountCell.numFmt = '#,##0';
     totalAmountCell.font = { bold:true };
     totalAmountCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL_PALE} };
     totalAmountCell.alignment = { horizontal:'right' };
-    ['F','G','H','I'].forEach(col=>{
+    ['F','G','I','J','K','L'].forEach(col=>{
       const c = ws1.getCell(`${col}${totalRowIdx}`);
       c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL_PALE} };
     });
-    ws1.getColumn(9).width = 24;
 
     /* ---- 工作表2：類別小計 ---- */
     const ws2 = wb.addWorksheet('類別小計');
@@ -1326,10 +1341,10 @@ $('exportExcelBtn').addEventListener('click', async ()=>{
 $('exportCsvBtn').addEventListener('click', ()=>{
   const rows = getFiltered();
   if(!rows.length){ showToast("此區間沒有資料可匯出"); return; }
-  const header = ["日期","民國日期","支出類別","摘要","支出金額","實支/預支","主管核示","登打人","備註"];
+  const header = ["項次","日期","民國日期","支出類別","摘要","規格/單位","數量","支出金額","實支/預支","主管核示","登打人","備註"];
   const lines = [header.join(",")];
-  rows.forEach(r=>{
-    const vals = [r.date, rocFromISO(r.date), r.category, r.desc, r.amount, r.type, r.status||'待核', r.recorder||"", (r.note||"").replace(/\n/g," ")]
+  rows.forEach((r, idx)=>{
+    const vals = [idx+1, r.date, rocFromISO(r.date), r.category, r.desc, r.qty||'', r.unit||'', r.amount, r.type, r.status||'待核', r.recorder||"", (r.note||"").replace(/\n/g," ")]
       .map(v => `"${String(v).replace(/"/g,'""')}"`);
     lines.push(vals.join(","));
   });

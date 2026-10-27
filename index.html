@@ -103,6 +103,19 @@
             <label>支出金額（元） <span class="req">*</span></label>
             <input type="number" id="f_amount" min="0" step="1" required placeholder="0">
           </div>
+          <div class="field field-short">
+            <label>數量</label>
+            <input type="number" id="f_qty" min="0" step="any" placeholder="1" style="max-width:90px;">
+          </div>
+          <div class="field field-short">
+            <label>規格／單位</label>
+            <input type="text" id="f_unit" placeholder="式、件、場、小時…" list="unitList" style="max-width:120px;">
+            <datalist id="unitList">
+              <option value="式"><option value="件"><option value="場">
+              <option value="小時"><option value="份"><option value="組">
+              <option value="箱"><option value="瓶"><option value="包">
+            </datalist>
+          </div>
           <div class="field">
             <label>實支／預支</label>
             <div class="radio-row">
@@ -149,7 +162,7 @@
       <div class="table-scroll">
         <table id="recentTable">
           <thead>
-            <tr><th>日期</th><th>類別</th><th>摘要</th><th class="amt">金額</th><th>性質</th><th>核示</th><th>登打人</th><th>操作</th></tr>
+            <tr><th>日期</th><th>類別</th><th>摘要</th><th>數量</th><th>規格/單位</th><th class="amt">金額</th><th>性質</th><th>核示</th><th>登打人</th><th>操作</th></tr>
           </thead>
           <tbody id="recentBody"></tbody>
         </table>
@@ -274,7 +287,7 @@
       <div class="table-scroll">
         <table id="detailTable">
           <thead>
-            <tr><th>日期</th><th>類別</th><th>摘要</th><th class="amt">金額</th><th>性質</th><th>核示</th><th>登打人</th><th>備註</th><th>操作</th></tr>
+            <tr><th>日期</th><th>類別</th><th>摘要</th><th>數量</th><th>規格/單位</th><th class="amt">金額</th><th>性質</th><th>核示</th><th>登打人</th><th>備註</th><th>操作</th></tr>
           </thead>
           <tbody id="detailBody"></tbody>
         </table>
@@ -383,7 +396,7 @@
         <h2 style="font-size:14px;">預覽 <span class="tag" id="importPreviewCount"></span></h2>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>日期</th><th>類別</th><th>摘要</th><th class="amt">金額</th><th>性質</th><th>核示</th></tr></thead>
+            <thead><tr><th>日期</th><th>類別</th><th>摘要</th><th>數量</th><th>規格/單位</th><th class="amt">金額</th><th>性質</th><th>核示</th></tr></thead>
             <tbody id="importPreviewBody"></tbody>
           </table>
         </div>
