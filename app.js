@@ -1191,64 +1191,116 @@ $('exportExcelBtn').addEventListener('click', async ()=>{
     const thinBorder = { style:'thin', color:{argb:'FFCCCCCC'} };
     const allBorders = { top:thinBorder, bottom:thinBorder, left:thinBorder, right:thinBorder };
 
-    /* ---- 工作表1：逐筆明細 ---- */
-    const ws1 = wb.addWorksheet('支出明細', { views:[{ state:'frozen', ySplit:5 }] });
-    ws1.mergeCells('A1:L1');
-    ws1.getCell('A1').value = '中華民國腦性麻痺協會　臺北市大同發展中心';
-    ws1.getCell('A1').font = { bold:true, size:14 };
-    ws1.getCell('A1').alignment = { horizontal:'center' };
-    ws1.mergeCells('A2:L2');
-    ws1.getCell('A2').value = '經費支出逐筆明細表';
-    ws1.getCell('A2').font = { bold:true, size:16, color:{argb:TEAL} };
-    ws1.getCell('A2').alignment = { horizontal:'center' };
-    ws1.mergeCells('A3:L3');
-    ws1.getCell('A3').value = lastRangeLabelText + `　｜　製表日期：${rocFromISO(todayISO())}　｜　共 ${rows.length} 筆`;
-    ws1.getCell('A3').font = { size:10, color:{argb:'FF52615E'} };
-    ws1.getCell('A3').alignment = { horizontal:'center' };
-    ws1.getRow(4).height = 4;
+    /* ---- 工作表1：逐筆明細（格式對應協會支出申請單） ---- */
+    // 取得日期起迄（ROC 格式，如 115.10.14）
+    const rocShort = iso => {
+      if(!iso) return '';
+      const [y,m,d] = iso.split('-').map(Number);
+      return `${y-1911}.${String(m).padStart(2,'0')}.${String(d).padStart(2,'0')}`;
+    };
+    const sortedDates = rows.map(r=>r.date).filter(Boolean).sort();
+    const dateStart = sortedDates[0] || $('r_start').value || '';
+    const dateEnd   = sortedDates[sortedDates.length-1] || $('r_end').value || '';
+    const dateRangeRoc = (dateStart && dateEnd)
+      ? `${rocShort(dateStart)} ～ ${rocShort(dateEnd)}`
+      : lastRangeLabelText;
 
-    const headerRow = ws1.getRow(5);
-    // 欄位順序對應協會申請單格式：項次/日期/民國日期/類別/摘要/規格單位/數量/金額/性質/核示/登打人/備註
-    headerRow.values = ['項次','日期','民國日期','支出類別','摘要','規格/單位','數量','支出金額','實支/預支','核示狀態','登打人','備註'];
+    // 欄位定義（共 11 欄，不含民國日期——日期欄直接填民國格式）
+    // A=項次 B=日期(民國) C=支出類別 D=摘要 E=規格/單位 F=數量 G=支出金額 H=實支/預支 I=核示狀態 J=登打人 K=備註
+    const COL_AMOUNT = 7; // G 欄 (1-based)
+    const NCOLS = 11;
+
+    const ws1 = wb.addWorksheet('支出申請單', { views:[{ state:'frozen', ySplit:4 }] });
+    ws1.columns = [
+      {key:'seq',      width:7},
+      {key:'date',     width:14},
+      {key:'cat',      width:16},
+      {key:'desc',     width:30},
+      {key:'qty',      width:10},
+      {key:'unit',     width:10},
+      {key:'amount',   width:13},
+      {key:'type',     width:11},
+      {key:'status',   width:12},
+      {key:'recorder', width:11},
+      {key:'note',     width:26}
+    ];
+
+    // 第 1 列：機構名稱
+    ws1.mergeCells(`A1:K1`);
+    ws1.getCell('A1').value = '大同發展中心支出申請';
+    ws1.getCell('A1').font = { bold:true, size:16 };
+    ws1.getCell('A1').alignment = { horizontal:'center', vertical:'middle' };
+    ws1.getRow(1).height = 28;
+
+    // 第 2 列：日期起迄
+    ws1.mergeCells(`A2:K2`);
+    ws1.getCell('A2').value = dateRangeRoc;
+    ws1.getCell('A2').font = { size:12 };
+    ws1.getCell('A2').alignment = { horizontal:'center' };
+
+    // 第 3 列：製表資訊
+    ws1.mergeCells(`A3:K3`);
+    ws1.getCell('A3').value = `製表日期：${rocFromISO(todayISO())}　共 ${rows.length} 筆`;
+    ws1.getCell('A3').font = { size:9, color:{argb:'FF52615E'} };
+    ws1.getCell('A3').alignment = { horizontal:'right' };
+
+    // 第 4 列：表頭
+    const headerRow = ws1.getRow(4);
+    headerRow.values = ['項次','日期','支出類別','摘要','規格/單位','數量','支出金額','實支/預支','核示狀態','登打人','備註'];
+    headerRow.height = 20;
     headerRow.eachCell(c=>{
       c.font = { bold:true, color:{argb:WHITE} };
       c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL} };
       c.alignment = { horizontal:'center', vertical:'middle' };
       c.border = allBorders;
     });
-    ws1.columns = [
-      {key:'seq',   width:7},  {key:'date', width:13}, {key:'roc',  width:14},
-      {key:'cat',   width:14}, {key:'desc', width:30},
-      {key:'qty',   width:10}, {key:'unit', width:10},
-      {key:'amount',width:13}, {key:'type', width:11},
-      {key:'status',width:12}, {key:'recorder', width:11}, {key:'note', width:24}
-    ];
-    rows.slice().reverse().forEach((r, idx)=>{
+
+    // 資料列（從第 5 列開始）
+    const dataRows = rows.slice().reverse();
+    dataRows.forEach((r, idx)=>{
       const row = ws1.addRow([
-        idx+1, r.date, rocFromISO(r.date), r.category, r.desc,
-        r.qty||'', r.unit||'',
-        r.amount, r.type, r.status||'待核', r.recorder||'', r.note||''
+        idx+1,
+        rocShort(r.date),
+        r.category,
+        r.desc,
+        r.qty  || '',
+        r.unit || '',
+        Number(r.amount) || 0,
+        r.type,
+        r.status || '待核',
+        r.recorder || '',
+        r.note || ''
       ]);
       row.eachCell(c=>{ c.border = allBorders; c.alignment = { vertical:'middle', wrapText:true }; });
-      row.getCell(8).numFmt = '#,##0';
-      row.getCell(8).alignment = { horizontal:'right', vertical:'middle' };
+      // 金額欄（第 COL_AMOUNT 欄 = G）格式化
+      const amtCell = row.getCell(COL_AMOUNT);
+      amtCell.numFmt = '#,##0';
+      amtCell.alignment = { horizontal:'right', vertical:'middle' };
     });
+
+    // 小計列
+    const totalAmount = dataRows.reduce((s,r)=> s + (Number(r.amount)||0), 0);
     const totalRowIdx = ws1.lastRow.number + 1;
-    ws1.mergeCells(`A${totalRowIdx}:E${totalRowIdx}`);
+    // 合併 A～F（項次到數量）顯示「小計」
+    ws1.mergeCells(`A${totalRowIdx}:F${totalRowIdx}`);
     const totalLabelCell = ws1.getCell(`A${totalRowIdx}`);
     totalLabelCell.value = '小計';
-    totalLabelCell.font = { bold:true };
+    totalLabelCell.font = { bold:true, size:12 };
     totalLabelCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL_PALE} };
-    totalLabelCell.alignment = { horizontal:'center' };
-    const totalAmountCell = ws1.getCell(`H${totalRowIdx}`);
-    totalAmountCell.value = { formula: `SUM(H6:H${totalRowIdx-1})` };
+    totalLabelCell.alignment = { horizontal:'center', vertical:'middle' };
+    // 金額欄
+    const totalAmountCell = ws1.getCell(`G${totalRowIdx}`);
+    totalAmountCell.value = totalAmount;
     totalAmountCell.numFmt = '#,##0';
-    totalAmountCell.font = { bold:true };
+    totalAmountCell.font = { bold:true, size:12 };
     totalAmountCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL_PALE} };
-    totalAmountCell.alignment = { horizontal:'right' };
-    ['F','G','I','J','K','L'].forEach(col=>{
+    totalAmountCell.border = allBorders;
+    totalAmountCell.alignment = { horizontal:'right', vertical:'middle' };
+    // 其餘欄位填色
+    ['H','I','J','K'].forEach(col=>{
       const c = ws1.getCell(`${col}${totalRowIdx}`);
       c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:TEAL_PALE} };
+      c.border = allBorders;
     });
 
     /* ---- 工作表2：類別小計 ---- */
